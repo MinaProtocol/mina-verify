@@ -35,6 +35,18 @@ provided by OpenMina's `mina-tree` crate; `mina-verify` is a thin wrapper. The c
 is `verify_block(&header, &BlockVerifier::make(), &get_srs::<Fp>())`. Only
 `header.protocol_state` and `header.protocol_state_proof` participate.
 
+## Networks
+
+`Verifier::for_network("devnet"|"mainnet")` (or `MINA_NETWORK=…` for the binaries).
+
+- **devnet** — fully working (verified live blocks + a real fork).
+- **mainnet** — wired, but the mainnet blockchain verifier index embedded in
+  `mina-rust@ab69eaed` is in a stale JSON format (`"domain"` as an array vs the
+  current hex-string), so it won't parse. `for_network("mainnet")` returns a clean
+  `VerifierError::VerificationKeyUnavailable` rather than panicking. **Fix:**
+  regenerate that index in the current format upstream (we own `mina-rust`) —
+  `mina-rust`'s `precalculate_block_verifier_index_and_srs` produces it.
+
 ## Dependency note
 
 Pinned to `o1-labs/mina-rust @ ab69eaed` and `o1-labs/proof-systems @ 0.3.0`.

@@ -51,6 +51,10 @@ pub enum VerifierError {
     /// is a process-global set exactly once, so all verifiers in a process must
     /// target the same network.
     NetworkAlreadyInitialized { active: String, requested: String },
+    /// The network's embedded blockchain verification key could not be loaded.
+    /// (Known: the mainnet verifier index in mina-rust@ab69eaed is in a stale JSON
+    /// format and must be regenerated upstream.)
+    VerificationKeyUnavailable { network: String },
 }
 impl std::fmt::Display for VerifierError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -61,6 +65,10 @@ impl std::fmt::Display for VerifierError {
             VerifierError::NetworkAlreadyInitialized { active, requested } => write!(
                 f,
                 "network {active:?} already active in this process; cannot build a {requested:?} verifier"
+            ),
+            VerifierError::VerificationKeyUnavailable { network } => write!(
+                f,
+                "could not load the {network:?} blockchain verification key (embedded index unparseable — regenerate it upstream)"
             ),
         }
     }
@@ -100,7 +108,19 @@ impl Verifier {
             }
         }
         let network = mina_core::NetworkConfig::global().name;
-        Ok(Self { network, index: BlockVerifier::make() })
+        // BlockVerifier::make() parses the embedded verifier-index JSON and panics
+        // (unwrap) if it can't — e.g. the stale mainnet index. Catch that and turn it
+        // into a clean error so consumers don't crash.
+        let index = {
+            let prev = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {}));
+            let r = std::panic::catch_unwind(BlockVerifier::make);
+            std::panic::set_hook(prev);
+            r.map_err(|_| VerifierError::VerificationKeyUnavailable {
+                network: network.to_string(),
+            })?
+        };
+        Ok(Self { network, index })
     }
 
     /// Devnet verifier. Panics only if a *different* network is already active —
