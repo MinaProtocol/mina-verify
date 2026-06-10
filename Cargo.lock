@@ -2967,6 +2967,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mina-verify-monitor"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "mina-verify",
+ "mina-verify-capture",
+ "tokio",
+]
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -17,11 +17,13 @@
 //! provided by OpenMina's `mina-tree`; this crate is a thin, ergonomic wrapper.
 
 pub mod fork_choice;
+pub mod monitor;
 
 pub use fork_choice::{
     compare_tips, is_short_range_fork, prefers_candidate, select_canonical, ForkRange,
     TipComparison, VerifiedTip,
 };
+pub use monitor::{ChainMonitor, Ingest};
 
 use std::sync::Once;
 

@@ -1,0 +1,12 @@
+[package]
+name = "mina-verify-monitor"
+version = "0.1.0"
+edition = "2021"
+description = "Live trustless chain monitor: verify each gossiped block's proof before ingesting it."
+
+[dependencies]
+mina-verify = { path = "../mina-verify" }
+mina-verify-capture = { path = "../mina-verify-capture" }
+tokio = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }

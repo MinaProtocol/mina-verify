@@ -1,0 +1,109 @@
+//! Live block source: connect to a Mina network over its libp2p gossip and hand
+//! each block (NewState) message to a callback. Used by the `mina-verify-capture`
+//! binary (save to disk) and by `mina-verify-monitor` (verify-before-ingest).
+
+mod transport;
+
+use std::ops::ControlFlow;
+use std::time::Duration;
+
+use libp2p::{futures::StreamExt, gossipsub, swarm::SwarmEvent, Multiaddr};
+use transport::ed25519::{Keypair as EdKeypair, SecretKey};
+
+/// Live devnet chain id (matches `daemonStatus.chainId`).
+pub const DEVNET_CHAIN_ID: &str = "29936104443aaf264a7f0192ac64b1c7173198c1ed404c1bcff5e562e05eb7f6";
+
+/// Devnet seed peers.
+pub const DEVNET_PEERS: &[&str] = &[
+    "/dns4/seed-1.devnet.gcp.o1test.net/tcp/10003/p2p/12D3KooWAdgYL6hv18M3iDBdaK1dRygPivSfAfBNDzie6YqydVbs",
+    "/dns4/seed-2.devnet.gcp.o1test.net/tcp/10003/p2p/12D3KooWLjs54xHzVmMmGYb7W5RVibqbwD1co7M2ZMfPgPm7iAag",
+    "/dns4/seed-3.devnet.gcp.o1test.net/tcp/10003/p2p/12D3KooWEiGVAFC7curXWXiGZyMWnZK9h8BKr88U8D5PKV3dXciv",
+];
+
+/// The consensus-messages gossip topic (blocks + pool diffs).
+pub const CONSENSUS_TOPIC: &str = "coda/consensus-messages/0.0.1";
+
+/// Connect to a Mina network over gossip and invoke `on_block` with the raw gossip
+/// payload (`[8-byte len][GossipNetMessageV2 binprot]`) of each `NewState` (block).
+///
+/// Runs until `on_block` returns [`ControlFlow::Break`] or `deadline` elapses. The
+/// payload is in the exact form [`mina_verify::block_from_gossip_payload`] expects.
+pub async fn subscribe_blocks<F>(
+    chain_id: &str,
+    peers: &[&str],
+    deadline: Option<Duration>,
+    mut on_block: F,
+) where
+    F: FnMut(&[u8]) -> ControlFlow<()>,
+{
+    let peers: Vec<Multiaddr> = peers.iter().map(|s| s.parse().expect("valid multiaddr")).collect();
+
+    let local_key: libp2p::identity::Keypair = EdKeypair::from(SecretKey::generate()).into();
+    log::info!("local peer id: {}", local_key.public().to_peer_id());
+
+    let behaviour: gossipsub::Behaviour = {
+        let cfg = gossipsub::ConfigBuilder::default()
+            .max_transmit_size(1024 * 1024 * 32)
+            .build()
+            .expect("valid gossipsub config");
+        gossipsub::Behaviour::new(gossipsub::MessageAuthenticity::Signed(local_key.clone()), cfg)
+            .expect("gossipsub behaviour")
+    };
+
+    // pnet PSK = Blake2b256("/coda/0.0.1/" || chain_id); transport::swarm hashes the
+    // bytes we pass with no prefix, so prepend it here.
+    let pnet_input = format!("/coda/0.0.1/{chain_id}");
+    let mut swarm = transport::swarm(
+        local_key,
+        pnet_input.as_bytes(),
+        Vec::<Multiaddr>::new(),
+        peers.iter().cloned(),
+        behaviour,
+    );
+
+    let topic = gossipsub::IdentTopic::new(CONSENSUS_TOPIC);
+    swarm.behaviour_mut().subscribe(&topic).unwrap();
+    for peer in &peers {
+        for proto in peer.iter() {
+            if let libp2p::multiaddr::Protocol::P2p(peer_id) = proto {
+                swarm.behaviour_mut().add_explicit_peer(&peer_id);
+            }
+        }
+    }
+
+    let sleep = async {
+        match deadline {
+            Some(d) => tokio::time::sleep(d).await,
+            None => std::future::pending::<()>().await,
+        }
+    };
+    tokio::pin!(sleep);
+
+    loop {
+        tokio::select! {
+            _ = &mut sleep => { log::info!("deadline reached"); break; }
+            ev = swarm.next() => match ev {
+                Some(SwarmEvent::Behaviour(gossipsub::Event::Message { message, .. })) => {
+                    // tag at offset 8: 0 = NewState (block).
+                    if message.data.get(8) == Some(&0) {
+                        if let ControlFlow::Break(()) = on_block(&message.data) {
+                            break;
+                        }
+                    }
+                }
+                Some(SwarmEvent::ConnectionClosed { peer_id, .. }) => {
+                    // Stay in the gossip mesh: re-dial the seeds when a link drops.
+                    log::debug!("conn closed {peer_id}; re-dialing");
+                    for addr in &peers {
+                        let _ = swarm.dial(addr.clone());
+                    }
+                }
+                Some(SwarmEvent::OutgoingConnectionError { peer_id, error, .. }) => {
+                    log::debug!("dial error to {peer_id:?}: {error}");
+                }
+                Some(_) => {}
+                None => break,
+            }
+        }
+    }
+}
