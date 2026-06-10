@@ -54,11 +54,13 @@ is `verify_block(&header, &BlockVerifier::make(), &get_srs::<Fp>())`. Only
 ### Verifying arbitrary networks (mesa-mut, future forks)
 
 Verification is gated on having the network's blockchain verifier index. mina-tree
-embeds only devnet (current) and mainnet (stale). The general fix is a
-`Verifier::with_index_json(&str)` that loads any VK — which needs `mina-rust`'s
-`make_verifier_index` exposed as `pub` (it's the SRS/endo finalization a parsed JSON
-index requires) plus the target network's index JSON. Both are within our control
-since we own `mina-rust`.
+embeds only devnet (current) and mainnet (stale). `Verifier::with_index_json(&str)` loads any network's blockchain verifier index
+(CLI: `MINA_VK_JSON=<file>`). It re-implements mina-tree's finalization with public
+kimchi APIs, so no upstream change is needed — proven equivalent to the embedded VK
+on a live devnet block. To verify **mesa-mut** or **mainnet**, supply their index
+JSON in the current hex-string format (regenerate via `mina-rust`'s
+`precalculate_block_verifier_index_and_srs`, or convert a node's
+`blockchainVerificationKey`).
 
 ## Dependency note
 
