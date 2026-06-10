@@ -7,6 +7,7 @@
 //! source is required.
 //!
 //! ```no_run
+//! # let payload: Vec<u8> = Vec::new(); // a captured gossip payload
 //! let verifier = mina_verify::Verifier::devnet();
 //! let block = mina_verify::block_from_gossip_payload(&payload)?;
 //! assert!(verifier.verify_block(&block));
