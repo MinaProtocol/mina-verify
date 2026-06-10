@@ -20,8 +20,33 @@ pub const DEVNET_PEERS: &[&str] = &[
     "/dns4/seed-3.devnet.gcp.o1test.net/tcp/10003/p2p/12D3KooWEiGVAFC7curXWXiGZyMWnZK9h8BKr88U8D5PKV3dXciv",
 ];
 
+/// Live mainnet chain id.
+pub const MAINNET_CHAIN_ID: &str = "a7351abc7ddf2ea92d1b38cc8e636c271c1dfd2c081c637f62ebc2af34eb7cc1";
+
+/// Mainnet seed peers.
+pub const MAINNET_PEERS: &[&str] = &[
+    "/dns4/seed-1.mainnet.gcp.o1test.net/tcp/10003/p2p/12D3KooWCa1d7G3SkRxy846qTvdAFX69NnoYZ32orWVLqJcDVGHW",
+    "/dns4/seed-2.mainnet.gcp.o1test.net/tcp/32002/p2p/12D3KooWK4NfthViCTyLgVQa1WvqDC1NccVxGruCXCZUt3GqvFvn",
+    "/dns4/seed-3.mainnet.gcp.o1test.net/tcp/32003/p2p/12D3KooWNofeYVAJXA3WGg2qCDhs3GEe71kTmKpFQXRbZmCz1Vr7",
+    "/dns4/seed-4.mainnet.gcp.o1test.net/tcp/10003/p2p/12D3KooWEdBiTUQqxp3jeuWaZkwiSNcFxC6d6Tdq7u2Lf2ZD2Q6X",
+    "/dns4/seed-5.mainnet.gcp.o1test.net/tcp/32005/p2p/12D3KooWL1DJTigSwuKQRfQE3p7puFUqfbHjXbZJ9YBWtMNpr3GU",
+    "/dns4/seed-6.mainnet.gcp.o1test.net/tcp/32006/p2p/12D3KooWHGx4u32n42ub7dJNxAcAhwiA1WDq1Zsjn3k7RsS11pE8",
+    "/dns4/mina-mainnet-seed.staketab.com/tcp/10003/p2p/12D3KooWSDTiXcdBVpN12ZqXJ49qCFp8zB1NnovuhZu6A28GLF1J",
+    "/dns4/production-mainnet-libp2p.minaprotocol.network/tcp/10000/p2p/12D3KooWPywsM191KGGNVGiNqN35nyyJg4W2BhhYukF6hP9YBR8q",
+    "/dns4/seed.minaexplorer.com/tcp/8302/p2p/12D3KooWR7coZtrMHvsgsfiWq2GESYypac3i29LFGp6EpbtjxBiJ",
+];
+
 /// The consensus-messages gossip topic (blocks + pool diffs).
 pub const CONSENSUS_TOPIC: &str = "coda/consensus-messages/0.0.1";
+
+/// `(chain_id, seed peers)` for a supported network name ("devnet" / "mainnet").
+pub fn network_seeds(network: &str) -> Option<(&'static str, &'static [&'static str])> {
+    match network {
+        "devnet" => Some((DEVNET_CHAIN_ID, DEVNET_PEERS)),
+        "mainnet" => Some((MAINNET_CHAIN_ID, MAINNET_PEERS)),
+        _ => None,
+    }
+}
 
 /// Connect to a Mina network over gossip and invoke `on_block` with the raw gossip
 /// payload (`[8-byte len][GossipNetMessageV2 binprot]`) of each `NewState` (block).

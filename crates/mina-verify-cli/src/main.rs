@@ -40,7 +40,11 @@ fn main() {
         exit(2);
     }
 
-    let verifier = Verifier::devnet();
+    let network = std::env::var("MINA_NETWORK").unwrap_or_else(|_| "devnet".into());
+    let verifier = Verifier::for_network(&network).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        exit(2);
+    });
 
     if args.len() == 1 {
         let tip = load_and_verify(&verifier, &args[0]);

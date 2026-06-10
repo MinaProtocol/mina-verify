@@ -16,7 +16,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use mina_verify::{block_from_gossip_payload, ChainMonitor, Ingest, Verifier};
-use mina_verify_capture::{subscribe_blocks, DEVNET_CHAIN_ID, DEVNET_PEERS};
+use mina_verify_capture::{network_seeds, subscribe_blocks};
 
 #[tokio::main]
 async fn main() {
@@ -26,13 +26,17 @@ async fn main() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(600);
+    let network = std::env::var("MINA_NETWORK").unwrap_or_else(|_| "devnet".into());
+    let (chain_id, peers) = network_seeds(&network)
+        .unwrap_or_else(|| panic!("unknown MINA_NETWORK {network:?} (devnet|mainnet)"));
 
-    eprintln!("monitoring devnet gossip for {secs}s — verifying every block before ingest\n");
+    eprintln!("monitoring {network} gossip for {secs}s — verifying every block before ingest\n");
 
     // Worker thread: verify-before-ingest, off the gossip event loop.
+    let net = network.clone();
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let worker = std::thread::spawn(move || {
-        let verifier = Verifier::devnet();
+        let verifier = Verifier::for_network(&net).expect("verifier for network");
         let mut monitor = ChainMonitor::new(512);
         let (mut ingested, mut rejected) = (0u64, 0u64);
 
@@ -67,8 +71,8 @@ async fn main() {
     });
 
     subscribe_blocks(
-        DEVNET_CHAIN_ID,
-        DEVNET_PEERS,
+        chain_id,
+        peers,
         Some(Duration::from_secs(secs)),
         |payload| {
             // Hand off instantly; verification happens on the worker thread.

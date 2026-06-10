@@ -6,7 +6,7 @@
 
 use std::{fs, io::Write, ops::ControlFlow, path::PathBuf, time::Duration};
 
-use mina_verify_capture::{subscribe_blocks, DEVNET_CHAIN_ID, DEVNET_PEERS};
+use mina_verify_capture::{network_seeds, subscribe_blocks};
 
 #[tokio::main]
 async fn main() {
@@ -15,13 +15,18 @@ async fn main() {
     let out = PathBuf::from("captured");
     fs::create_dir_all(&out).unwrap();
 
+    let network = std::env::var("MINA_NETWORK").unwrap_or_else(|_| "devnet".into());
+    let (chain_id, peers) = network_seeds(&network)
+        .unwrap_or_else(|| panic!("unknown MINA_NETWORK {network:?} (devnet|mainnet)"));
+    eprintln!("network: {network}");
+
     let want: usize = env("CAPTURE_BLOCKS", 1);
     let secs: u64 = env("CAPTURE_SECS", 600);
 
     let mut saved = 0usize;
     subscribe_blocks(
-        DEVNET_CHAIN_ID,
-        DEVNET_PEERS,
+        chain_id,
+        peers,
         Some(Duration::from_secs(secs)),
         |payload| {
             let p = out.join(format!("block-{saved}.gossipbin"));
