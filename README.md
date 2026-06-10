@@ -46,10 +46,24 @@ the workspace dependencies, so a deleted/rewritten upstream can't break the buil
 
 - **Phase 0 — single-tip verification.** Verified a live devnet block end-to-end; a
   one-field tamper is rejected.
-- **Phase 1 — consensus fork-choice.** `Verifier::verify_tip` + `compare_tips` /
-  `select_canonical` wrap Ouroboros Samasika (`mina_core::consensus`) over
-  proof-verified tips. Validated on a **real same-height devnet fork** (two competing
-  valid blocks at height 526718): both verified, canonical tip selected.
+- **Phase 1 — consensus fork-choice + windowed monitor + verify-before-ingest.**
+  - `Verifier::verify_tip` + `compare_tips`/`select_canonical` wrap Ouroboros
+    Samasika (`mina_core::consensus`) over proof-verified tips.
+  - `ChainMonitor` keeps a bounded window keyed by state hash, walks
+    `previous_state_hash` links, and classifies each verified tip as
+    **Extend / Reorg / Fork / Behind / Duplicate / Unlinked** — naming the
+    divergence point. Validated on a **real same-height devnet fork** (height
+    526718): GENESIS then FORK, common ancestor identified.
+  - `mina-verify-monitor` is the **verify-before-ingest** consumer: every gossiped
+    block's proof is verified (on a worker thread, off the gossip loop) before it
+    enters the monitor; invalid blocks are rejected. Live run ingested consecutive
+    devnet blocks 526735→526736 ("extends best"), 0 rejected.
 
-Next: windowed history so a divergence can be classified as "extension" vs "genuine
-fork"; then the mobile (UniFFI/WASM) binding and the trustless-indexer consumer.
+Next: the mobile (UniFFI/WASM) binding; harden the monitor (peer discovery,
+persistence); a real indexer integration.
+
+## Run the live monitor
+
+```sh
+cargo run -p mina-verify-monitor          # verifies every devnet block before ingest
+```

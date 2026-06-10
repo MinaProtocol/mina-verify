@@ -6,9 +6,13 @@
 //! what a trustless indexer would do: every persisted row is proof-backed, so the
 //! index can't be poisoned by a lying or compromised node.
 //!
+//! Verification (multi-second crypto) runs on a worker thread so it never blocks the
+//! gossip event loop — otherwise we'd miss heartbeats and get pruned from the mesh.
+//!
 //! Env: CAPTURE_SECS (run duration, default 600). Set RUST_LOG=info for libp2p logs.
 
 use std::ops::ControlFlow;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use mina_verify::{block_from_gossip_payload, ChainMonitor, Ingest, Verifier};
@@ -23,53 +27,59 @@ async fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(600);
 
-    let verifier = Verifier::devnet();
-    let mut monitor = ChainMonitor::new(512);
-    let (mut ingested, mut rejected) = (0u64, 0u64);
-
     eprintln!("monitoring devnet gossip for {secs}s — verifying every block before ingest\n");
+
+    // Worker thread: verify-before-ingest, off the gossip event loop.
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    let worker = std::thread::spawn(move || {
+        let verifier = Verifier::devnet();
+        let mut monitor = ChainMonitor::new(512);
+        let (mut ingested, mut rejected) = (0u64, 0u64);
+
+        while let Ok(payload) = rx.recv() {
+            let block = match block_from_gossip_payload(&payload) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("  decode error (skipped): {e}");
+                    continue;
+                }
+            };
+            // --- verify-before-ingest: untrusted sender, no trust in the bytes ---
+            match verifier.verify_tip(block) {
+                Ok(Some(tip)) => {
+                    let height = tip.height();
+                    let outcome = monitor.ingest(&tip);
+                    ingested += 1; // a real indexer would persist `tip` here
+                    report(height, &outcome);
+                }
+                Ok(None) => {
+                    rejected += 1;
+                    eprintln!("  ✗ REJECTED: invalid proof — NOT ingested");
+                }
+                Err(e) => eprintln!("  ✗ malformed block (skipped): {e:?}"),
+            }
+        }
+
+        eprintln!(
+            "\ndone: {ingested} verified block(s) ingested, {rejected} rejected. best height: {:?}",
+            monitor.best_height()
+        );
+    });
 
     subscribe_blocks(
         DEVNET_CHAIN_ID,
         DEVNET_PEERS,
         Some(Duration::from_secs(secs)),
         |payload| {
-            let block = match block_from_gossip_payload(payload) {
-                Ok(b) => b,
-                Err(e) => {
-                    eprintln!("  decode error (skipped): {e}");
-                    return ControlFlow::Continue(());
-                }
-            };
-
-            // --- verify-before-ingest: untrusted sender, no trust in the bytes ---
-            let tip = match verifier.verify_tip(block) {
-                Ok(Some(tip)) => tip,
-                Ok(None) => {
-                    rejected += 1;
-                    eprintln!("  ✗ REJECTED: invalid proof — NOT ingested");
-                    return ControlFlow::Continue(());
-                }
-                Err(e) => {
-                    eprintln!("  ✗ malformed block (skipped): {e:?}");
-                    return ControlFlow::Continue(());
-                }
-            };
-
-            let height = tip.height();
-            let outcome = monitor.ingest(&tip);
-            ingested += 1; // a real indexer would persist `tip` here
-            report(height, &outcome);
-
+            // Hand off instantly; verification happens on the worker thread.
+            let _ = tx.send(payload.to_vec());
             ControlFlow::Continue(())
         },
     )
     .await;
 
-    eprintln!(
-        "\ndone: {ingested} verified block(s) ingested, {rejected} rejected. best height: {:?}",
-        monitor.best_height()
-    );
+    drop(tx); // close the channel so the worker drains and prints its summary
+    let _ = worker.join();
 }
 
 fn report(height: u32, outcome: &Ingest) {
