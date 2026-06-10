@@ -1,4 +1,7 @@
 #![forbid(unsafe_code)]
+// Vendored from o1-labs/mina-rust tools/transport (+ idle_connection_timeout); kept
+// close to upstream rather than trimming its unused public surface.
+#![allow(dead_code, unused_imports)]
 
 pub use libp2p::identity::{ed25519, Keypair};
 use libp2p::{

@@ -13,9 +13,10 @@ This is the foundation of a client-side system-integrity monitor / light client.
 
 | Crate | What it is |
 |-------|------------|
-| [`mina-verify`](crates/mina-verify) | The verification library. `Verifier::devnet().verify_block(&block)` and gossip-payload decoding. Pure verification — the intended dependency for downstream consumers (CLI, mobile, indexer). |
-| [`mina-verify-capture`](crates/mina-verify-capture) | Connects to the live devnet over Mina's libp2p (pnet keyed by chain_id), subscribes to the consensus-gossip topic, and saves a block. The trust input, obtained without any trusted endpoint. |
-| [`mina-verify-cli`](crates/mina-verify-cli) | `mina-verify <gossip-payload-file>` — decode and verify a captured block. |
+| [`mina-verify`](crates/mina-verify) | The verification library: block-proof verification (`Verifier`, any network via `for_network`/`with_index_json`), Samasika fork-choice (`compare_tips`/`select_canonical`), and the windowed `ChainMonitor`. The intended dependency for downstream consumers. |
+| [`mina-verify-capture`](crates/mina-verify-capture) | lib + bin: `subscribe_blocks` connects to a network over Mina's libp2p (pnet keyed by chain_id) and streams blocks; the bin saves them. The trust input, obtained without any trusted endpoint. |
+| [`mina-verify-cli`](crates/mina-verify-cli) | `mina-verify <file> [<file>…]` — verify a block, or feed several through the chain monitor. |
+| [`mina-verify-monitor`](crates/mina-verify-monitor) | Live **verify-before-ingest** monitor: verifies every gossiped block's proof before the chain monitor accepts it. The backend prototype. |
 
 ## Quick start
 
@@ -86,8 +87,24 @@ the workspace dependencies, so a deleted/rewritten upstream can't break the buil
     enters the monitor; invalid blocks are rejected. Live run ingested consecutive
     devnet blocks 526735→526736 ("extends best"), 0 rejected.
 
-Next: the mobile (UniFFI/WASM) binding; harden the monitor (peer discovery,
-persistence); a real indexer integration.
+**v1 scope (this round): trustless chain-integrity monitoring.** Verify any block's
+proof, choose between competing tips, track the canonical chain, and ingest only
+validated blocks. Trustless *reads* (account balances / zkApp state via Merkle
+inclusion) are intentionally **out of scope** — that's a separate capability with its
+own dependency (a binprot account source via RPC).
+
+### Roadmap
+
+This crate is meant to be a backend other tools build on:
+- **mina-indexer "ingest only on validation"** — `mina-verify-monitor` already *is*
+  this loop (`subscribe_blocks` → `verify_tip` → `ChainMonitor`); swap the log sink
+  for the indexer's store.
+- **zkApp-product monitoring backend** — expose `ChainMonitor`'s reorg/fork/health
+  signals as a service.
+- **Trustless reads (B → C)** — add an RPC block/account source (reliable on mainnet
+  + clean binprot accounts), then account/Merkle-inclusion verification on top.
+- Regenerate the mainnet / supply the mesa-mut verifier index (see *Networks*);
+  mobile (UniFFI/WASM) binding.
 
 ## Run the live monitor
 
