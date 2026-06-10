@@ -9,6 +9,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # ghcr.io/<owner>/<repo>, lowercased by the registry conventions
+  IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   build-test:
@@ -18,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: System deps
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev
-      # rust-toolchain.toml pins the exact toolchain (1.94.1 + rustfmt + clippy).
+      # rust-toolchain.toml pins the toolchain (1.94.1 + rustfmt + clippy).
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --all -- --check
@@ -32,15 +34,37 @@ jobs:
   docker:
     name: docker (bookworm)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build image
+      # Push only on a v* tag; otherwise this is build-only (verifies the image builds).
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image tags/labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=branch
+            type=sha
+      - name: Build (push only on tag)
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: false
-          tags: mina-verify:${{ github.sha }}
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -57,9 +81,28 @@ jobs:
         run: cargo install cargo-deb --locked
       - name: Build release
         run: cargo build --release --locked
-      - name: Package .deb
+      - name: Package .deb (always — verifies it builds)
         run: cargo deb -p mina-verify-cli --no-build
       - uses: actions/upload-artifact@v4
         with:
           name: mina-verify-deb-bookworm
           path: target/debian/*.deb
+
+  # Publish the .deb only on a v* tag, as a GitHub Release asset. (Docker is pushed
+  # to GHCR by the `docker` job above on the same tag.)
+  release:
+    name: publish (tag only)
+    needs: [build-test, docker, deb]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mina-verify-deb-bookworm
+          path: deb
+      - name: Attach .deb to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: deb/*.deb
