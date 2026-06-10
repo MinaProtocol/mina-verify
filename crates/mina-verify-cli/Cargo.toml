@@ -16,8 +16,8 @@ mina-verify = { path = "../mina-verify" }
 # three workspace binaries (run `cargo build --release` first).
 [package.metadata.deb]
 name = "mina-verify"
-maintainer = "O(1) Labs <build@o1labs.org>"
-copyright = "2026, O(1) Labs"
+maintainer = "Mina Protocol <build@minaprotocol.com>"
+copyright = "2026, Mina Foundation and contributors"
 section = "utils"
 priority = "optional"
 extended-description = "Trustless Mina chain-integrity monitoring: verify block proofs, Ouroboros Samasika fork-choice, a windowed chain monitor, and a live verify-before-ingest loop."

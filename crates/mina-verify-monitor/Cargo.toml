@@ -3,6 +3,7 @@ name = "mina-verify-monitor"
 version = "0.1.0"
 edition = "2021"
 description = "Live trustless chain monitor: verify each gossiped block's proof before ingesting it."
+license = "Apache-2.0"
 
 [dependencies]
 mina-verify = { path = "../mina-verify" }

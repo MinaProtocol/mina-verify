@@ -3,6 +3,7 @@ name = "mina-verify-capture"
 version = "0.1.0"
 edition = "2021"
 description = "Capture a live Mina devnet block off the consensus-gossip network."
+license = "Apache-2.0"
 
 [dependencies]
 libp2p = { workspace = true, features = [
