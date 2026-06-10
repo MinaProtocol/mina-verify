@@ -2937,7 +2937,7 @@ dependencies = [
 
 [[package]]
 name = "mina-verify"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "binprot",
  "kimchi",
@@ -2952,7 +2952,7 @@ dependencies = [
 
 [[package]]
 name = "mina-verify-capture"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "blake2",
  "env_logger",
@@ -2965,14 +2965,14 @@ dependencies = [
 
 [[package]]
 name = "mina-verify-cli"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "mina-verify",
 ]
 
 [[package]]
 name = "mina-verify-monitor"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "env_logger",
  "log",

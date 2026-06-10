@@ -1,6 +1,6 @@
 [package]
 name = "mina-verify"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 description = "Trustless verification of Mina block proofs (Pickles/kimchi) from untrusted sources."
 license = "Apache-2.0"
