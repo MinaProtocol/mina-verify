@@ -25,5 +25,5 @@ assets = [
     ["target/release/mina-verify", "usr/bin/", "755"],
     ["target/release/mina-verify-capture", "usr/bin/", "755"],
     ["target/release/mina-verify-monitor", "usr/bin/", "755"],
-    ["README.md", "usr/share/doc/mina-verify/README.md", "644"],
+    ["../../README.md", "usr/share/doc/mina-verify/README.md", "644"],
 ]
