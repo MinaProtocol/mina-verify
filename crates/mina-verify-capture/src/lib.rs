@@ -36,14 +36,28 @@ pub const MAINNET_PEERS: &[&str] = &[
     "/dns4/seed.minaexplorer.com/tcp/8302/p2p/12D3KooWR7coZtrMHvsgsfiWq2GESYypac3i29LFGp6EpbtjxBiJ",
 ];
 
+/// Live mesa-mut (hardfork upgrade) chain id. testnet-signed; pre-fork it tracks
+/// mainnet. Peers are dynamic — these are a live snapshot and may rotate.
+pub const MESA_MUT_CHAIN_ID: &str = "8b8ccbf273ef48aa0193ed634e69540657f0fc4292c9919a54b76a21b104abb2";
+
+/// mesa-mut peers (live snapshot; no stable published seeds for this network).
+pub const MESA_MUT_PEERS: &[&str] = &[
+    "/ip4/57.129.147.16/tcp/8302/p2p/12D3KooWAhy6QE9Re1dJwQiU6QMooVA9hTPN2HxJsnSjBQALANFv",
+    "/ip4/194.87.21.152/tcp/8302/p2p/12D3KooWKPYJknMVauxpvWpwt4E1SUXr9fsjAN8YaYHaCv1FTFjg",
+    "/ip4/37.27.109.20/tcp/8302/p2p/12D3KooWBZrHAfHDvtWUqW2ngSsQfHtyHqzQzxyQEvsjZygdCV9N",
+    "/ip4/65.21.197.119/tcp/8302/p2p/12D3KooWF2sNkn1urFsQvB9GMSQCpkMMzuYvhqcWknWK6fUdYWE7",
+    "/ip4/65.109.53.139/tcp/8302/p2p/12D3KooWGUjdTjajTMMzz8tJfCWTLcayDaixzWYEHLaB8gQwZrsy",
+];
+
 /// The consensus-messages gossip topic (blocks + pool diffs).
 pub const CONSENSUS_TOPIC: &str = "coda/consensus-messages/0.0.1";
 
-/// `(chain_id, seed peers)` for a supported network name ("devnet" / "mainnet").
+/// `(chain_id, seed peers)` for a network name ("devnet" / "mainnet" / "mesa-mut").
 pub fn network_seeds(network: &str) -> Option<(&'static str, &'static [&'static str])> {
     match network {
         "devnet" => Some((DEVNET_CHAIN_ID, DEVNET_PEERS)),
         "mainnet" => Some((MAINNET_CHAIN_ID, MAINNET_PEERS)),
+        "mesa-mut" => Some((MESA_MUT_CHAIN_ID, MESA_MUT_PEERS)),
         _ => None,
     }
 }
