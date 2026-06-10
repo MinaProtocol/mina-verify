@@ -1,0 +1,15 @@
+/target
+**/target
+
+# captured network data (blocks etc.) — not committed
+**/captured/
+*.gossipbin
+
+# local reference checkouts (not part of this repo)
+/openmina
+/mina_bridge
+/spike
+
+# scratch
+*.log
+/tip.json

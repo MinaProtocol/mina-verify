@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mina-verify",
+    "crates/mina-verify-capture",
+    "crates/mina-verify-cli",
+]
+
+# Pinned to o1-labs/mina-rust @ ab69eaed. NOTE: upstream (OpenMina) is unmaintained;
+# consider forking these repos under o1-labs control and repointing here.
+[workspace.dependencies]
+mina-tree = { git = "https://github.com/o1-labs/mina-rust", rev = "ab69eaed" }
+mina-p2p-messages = { git = "https://github.com/o1-labs/mina-rust", rev = "ab69eaed" }
+mina-core = { git = "https://github.com/o1-labs/mina-rust", rev = "ab69eaed" }
+mina-curves = { git = "https://github.com/o1-labs/proof-systems", tag = "0.3.0" }
+binprot = { git = "https://github.com/openmina/binprot-rs", rev = "400b52c" }
+libp2p = { git = "https://github.com/o1-labs/rust-libp2p", rev = "e88cec09bd2554f4cc79ff90f200e4c864adf495", default-features = false }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+blake2 = "0.10"
+hex = "0.4"
+pin-project-lite = "0.2"
+env_logger = "0.11"
+log = "0.4"
+
+# Required for mina-tree's dep tree (multihash 0.18 -> yanked core2 0.4.0, num-bigint fork).
+[patch.crates-io]
+num-bigint = { git = "https://github.com/openmina/num-bigint", branch = "rebase-onstack" }
+num-rational = { git = "https://github.com/openmina/num-rational", branch = "rebase-onstack" }

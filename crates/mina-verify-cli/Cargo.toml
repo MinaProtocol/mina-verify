@@ -1,0 +1,12 @@
+[package]
+name = "mina-verify-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI: verify a Mina block proof from a captured consensus-gossip payload."
+
+[[bin]]
+name = "mina-verify"
+path = "src/main.rs"
+
+[dependencies]
+mina-verify = { path = "../mina-verify" }

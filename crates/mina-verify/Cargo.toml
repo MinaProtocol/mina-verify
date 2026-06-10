@@ -1,0 +1,12 @@
+[package]
+name = "mina-verify"
+version = "0.1.0"
+edition = "2021"
+description = "Trustless verification of Mina block proofs (Pickles/kimchi) from untrusted sources."
+
+[dependencies]
+mina-tree = { workspace = true }
+mina-p2p-messages = { workspace = true }
+mina-core = { workspace = true }
+mina-curves = { workspace = true }
+binprot = { workspace = true }
