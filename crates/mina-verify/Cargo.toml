@@ -9,4 +9,8 @@ mina-tree = { workspace = true }
 mina-p2p-messages = { workspace = true }
 mina-core = { workspace = true }
 mina-curves = { workspace = true }
+kimchi = { workspace = true }
+poly-commitment = { workspace = true }
 binprot = { workspace = true }
+once_cell = { workspace = true }
+serde_json = { workspace = true }

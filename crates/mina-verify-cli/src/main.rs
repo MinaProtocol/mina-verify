@@ -40,8 +40,19 @@ fn main() {
         exit(2);
     }
 
-    let network = std::env::var("MINA_NETWORK").unwrap_or_else(|_| "devnet".into());
-    let verifier = Verifier::for_network(&network).unwrap_or_else(|e| {
+    // MINA_VK_JSON=<file> supplies a verifier-index JSON for any network (mesa-mut,
+    // future forks, regenerated mainnet); otherwise use the embedded VK for MINA_NETWORK.
+    let verifier = if let Ok(path) = std::env::var("MINA_VK_JSON") {
+        let json = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            eprintln!("error: cannot read {path}: {e}");
+            exit(2);
+        });
+        Verifier::with_index_json(&json)
+    } else {
+        let network = std::env::var("MINA_NETWORK").unwrap_or_else(|_| "devnet".into());
+        Verifier::for_network(&network)
+    }
+    .unwrap_or_else(|e| {
         eprintln!("error: {e}");
         exit(2);
     });

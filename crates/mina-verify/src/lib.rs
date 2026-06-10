@@ -27,12 +27,18 @@ pub use monitor::{ChainMonitor, Ingest};
 
 use std::sync::Once;
 
+use std::sync::Arc;
+
 use binprot::BinProtRead;
-use mina_curves::pasta::Fp;
+use mina_curves::pasta::{Fp, Fq};
 use mina_p2p_messages::gossip::GossipNetMessageV2;
 use mina_tree::proofs::verification::verify_block as verify_block_proof;
 use mina_tree::proofs::verifiers::BlockVerifier;
+use mina_tree::proofs::VerifierIndex;
 use mina_tree::verifier::get_srs;
+
+pub mod verifier_index;
+pub use verifier_index::verifier_index_from_json;
 
 // Re-exported so consumers need not depend on mina-p2p-messages directly.
 pub use mina_p2p_messages::v2::{
@@ -55,6 +61,8 @@ pub enum VerifierError {
     /// (Known: the mainnet verifier index in mina-rust@ab69eaed is in a stale JSON
     /// format and must be regenerated upstream.)
     VerificationKeyUnavailable { network: String },
+    /// A caller-supplied verifier-index JSON failed to parse.
+    InvalidIndexJson(String),
 }
 impl std::fmt::Display for VerifierError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -70,6 +78,7 @@ impl std::fmt::Display for VerifierError {
                 f,
                 "could not load the {network:?} blockchain verification key (embedded index unparseable — regenerate it upstream)"
             ),
+            VerifierError::InvalidIndexJson(e) => write!(f, "invalid verifier-index JSON: {e}"),
         }
     }
 }
@@ -79,8 +88,8 @@ static WORKDIR: Once = Once::new();
 
 /// A block verifier bound to one network's blockchain verification key.
 pub struct Verifier {
-    network: &'static str,
-    index: BlockVerifier,
+    network: String,
+    index: Arc<VerifierIndex<Fq>>,
 }
 
 impl Verifier {
@@ -120,7 +129,24 @@ impl Verifier {
                 network: network.to_string(),
             })?
         };
-        Ok(Self { network, index })
+        Ok(Self {
+            network: network.to_string(),
+            index: index.into(),
+        })
+    }
+
+    /// Build a verifier from a caller-supplied blockchain verifier-index JSON (the
+    /// `*_blockchain_verifier_index.json` format). Use this for networks whose VK is
+    /// not embedded in mina-tree (mesa-mut, future hardforks) or to override a stale
+    /// embedded one (mainnet). No global network config is required.
+    pub fn with_index_json(json: &str) -> Result<Self, VerifierError> {
+        WORKDIR.call_once(|| mina_core::set_work_dir(std::env::temp_dir()));
+        let index = verifier_index::verifier_index_from_json(json)
+            .map_err(|e| VerifierError::InvalidIndexJson(e.to_string()))?;
+        Ok(Self {
+            network: "custom".to_string(),
+            index: Arc::new(index),
+        })
     }
 
     /// Devnet verifier. Panics only if a *different* network is already active —
@@ -134,9 +160,10 @@ impl Verifier {
         Self::for_network("mainnet").expect("mainnet verifier")
     }
 
-    /// The network this verifier targets.
-    pub fn network(&self) -> &'static str {
-        self.network
+    /// The network this verifier targets ("devnet"/"mainnet", or "custom" for
+    /// [`Verifier::with_index_json`]).
+    pub fn network(&self) -> &str {
+        &self.network
     }
 
     /// Verify a block header's blockchain SNARK proof.

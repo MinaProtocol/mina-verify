@@ -2940,10 +2940,14 @@ name = "mina-verify"
 version = "0.1.0"
 dependencies = [
  "binprot",
+ "kimchi",
  "mina-core",
  "mina-curves",
  "mina-p2p-messages",
  "mina-tree",
+ "once_cell",
+ "poly-commitment",
+ "serde_json",
 ]
 
 [[package]]
