@@ -44,6 +44,12 @@ the workspace dependencies, so a deleted/rewritten upstream can't break the buil
 
 ## Status
 
-Phase 0 complete: verified a live devnet block (#526706) end-to-end; a one-field
-tamper is rejected. Next: Samasika consensus / fork-choice over a block window, then
-the mobile (UniFFI/WASM) binding and the trustless-indexer consumer.
+- **Phase 0 — single-tip verification.** Verified a live devnet block end-to-end; a
+  one-field tamper is rejected.
+- **Phase 1 — consensus fork-choice.** `Verifier::verify_tip` + `compare_tips` /
+  `select_canonical` wrap Ouroboros Samasika (`mina_core::consensus`) over
+  proof-verified tips. Validated on a **real same-height devnet fork** (two competing
+  valid blocks at height 526718): both verified, canonical tip selected.
+
+Next: windowed history so a divergence can be classified as "extension" vs "genuine
+fork"; then the mobile (UniFFI/WASM) binding and the trustless-indexer consumer.

@@ -26,6 +26,11 @@ async fn main() {
     let out = PathBuf::from("captured");
     fs::create_dir_all(&out).unwrap();
 
+    let want_blocks: usize = std::env::var("CAPTURE_BLOCKS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+
     let peers: Vec<Multiaddr> = PEERS.iter().map(|s| s.parse().unwrap()).collect();
 
     let local_key: libp2p::identity::Keypair = EdKeypair::from(SecretKey::generate()).into();
@@ -84,7 +89,7 @@ async fn main() {
                         fs::File::create(&p).unwrap().write_all(d).unwrap();
                         eprintln!("  -> SAVED BLOCK {} ({} bytes)", p.display(), d.len());
                         saved += 1;
-                        if saved >= 1 { eprintln!("captured a block; exiting"); break; }
+                        if saved >= want_blocks { eprintln!("captured {saved} block(s); exiting"); break; }
                     }
                 }
                 Some(SwarmEvent::ConnectionEstablished { peer_id, .. }) => eprintln!("connected: {peer_id}"),
@@ -95,7 +100,14 @@ async fn main() {
                     eprintln!("DIAL ERROR to {peer_id:?}: {error}")
                 }
                 Some(SwarmEvent::Dialing { peer_id, .. }) => eprintln!("dialing {peer_id:?}"),
-                Some(ev) => eprintln!("event: {ev:?}"),
+                Some(SwarmEvent::ConnectionClosed { peer_id, cause, .. }) => {
+                    // Stay in the gossip mesh: re-dial the seeds whenever a link drops.
+                    eprintln!("conn closed {peer_id} ({cause:?}); re-dialing seeds");
+                    for addr in &peers {
+                        let _ = swarm.dial(addr.clone());
+                    }
+                }
+                Some(_) => {}
                 None => break,
             }
         }

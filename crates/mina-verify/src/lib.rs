@@ -16,6 +16,13 @@
 //! The verification core (`verify_block`, the verification key, the SRS) is
 //! provided by OpenMina's `mina-tree`; this crate is a thin, ergonomic wrapper.
 
+pub mod fork_choice;
+
+pub use fork_choice::{
+    compare_tips, is_short_range_fork, prefers_candidate, select_canonical, ForkRange,
+    TipComparison, VerifiedTip,
+};
+
 use std::sync::Once;
 
 use binprot::BinProtRead;
