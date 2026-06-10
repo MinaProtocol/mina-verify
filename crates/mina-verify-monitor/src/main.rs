@@ -92,7 +92,11 @@ fn report(height: u32, outcome: &Ingest) {
         Ingest::Extend { .. } => "✓ extends best".into(),
         Ingest::Duplicate => "· duplicate".into(),
         Ingest::Behind { .. } => "· behind best (orphan/older)".into(),
-        Ingest::Reorg { depth, common_ancestor, .. } => format!(
+        Ingest::Reorg {
+            depth,
+            common_ancestor,
+            ..
+        } => format!(
             "⟳ REORG to new best (rolled back {}, diverged at {})",
             depth.map(|d| d.to_string()).unwrap_or_else(|| "?".into()),
             common_ancestor.as_deref().unwrap_or("<unknown>")

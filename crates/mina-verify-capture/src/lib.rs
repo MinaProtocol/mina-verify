@@ -11,7 +11,8 @@ use libp2p::{futures::StreamExt, gossipsub, swarm::SwarmEvent, Multiaddr};
 use transport::ed25519::{Keypair as EdKeypair, SecretKey};
 
 /// Live devnet chain id (matches `daemonStatus.chainId`).
-pub const DEVNET_CHAIN_ID: &str = "29936104443aaf264a7f0192ac64b1c7173198c1ed404c1bcff5e562e05eb7f6";
+pub const DEVNET_CHAIN_ID: &str =
+    "29936104443aaf264a7f0192ac64b1c7173198c1ed404c1bcff5e562e05eb7f6";
 
 /// Devnet seed peers.
 pub const DEVNET_PEERS: &[&str] = &[
@@ -21,7 +22,8 @@ pub const DEVNET_PEERS: &[&str] = &[
 ];
 
 /// Live mainnet chain id.
-pub const MAINNET_CHAIN_ID: &str = "a7351abc7ddf2ea92d1b38cc8e636c271c1dfd2c081c637f62ebc2af34eb7cc1";
+pub const MAINNET_CHAIN_ID: &str =
+    "a7351abc7ddf2ea92d1b38cc8e636c271c1dfd2c081c637f62ebc2af34eb7cc1";
 
 /// Mainnet seed peers.
 pub const MAINNET_PEERS: &[&str] = &[
@@ -38,7 +40,8 @@ pub const MAINNET_PEERS: &[&str] = &[
 
 /// Live mesa-mut (hardfork upgrade) chain id. testnet-signed; pre-fork it tracks
 /// mainnet. Peers are dynamic — these are a live snapshot and may rotate.
-pub const MESA_MUT_CHAIN_ID: &str = "8b8ccbf273ef48aa0193ed634e69540657f0fc4292c9919a54b76a21b104abb2";
+pub const MESA_MUT_CHAIN_ID: &str =
+    "8b8ccbf273ef48aa0193ed634e69540657f0fc4292c9919a54b76a21b104abb2";
 
 /// mesa-mut peers (live snapshot; no stable published seeds for this network).
 pub const MESA_MUT_PEERS: &[&str] = &[
@@ -75,7 +78,10 @@ pub async fn subscribe_blocks<F>(
 ) where
     F: FnMut(&[u8]) -> ControlFlow<()>,
 {
-    let peers: Vec<Multiaddr> = peers.iter().map(|s| s.parse().expect("valid multiaddr")).collect();
+    let peers: Vec<Multiaddr> = peers
+        .iter()
+        .map(|s| s.parse().expect("valid multiaddr"))
+        .collect();
 
     let local_key: libp2p::identity::Keypair = EdKeypair::from(SecretKey::generate()).into();
     log::info!("local peer id: {}", local_key.public().to_peer_id());
@@ -85,8 +91,11 @@ pub async fn subscribe_blocks<F>(
             .max_transmit_size(1024 * 1024 * 32)
             .build()
             .expect("valid gossipsub config");
-        gossipsub::Behaviour::new(gossipsub::MessageAuthenticity::Signed(local_key.clone()), cfg)
-            .expect("gossipsub behaviour")
+        gossipsub::Behaviour::new(
+            gossipsub::MessageAuthenticity::Signed(local_key.clone()),
+            cfg,
+        )
+        .expect("gossipsub behaviour")
     };
 
     // pnet PSK = Blake2b256("/coda/0.0.1/" || chain_id); transport::swarm hashes the

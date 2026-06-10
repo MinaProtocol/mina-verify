@@ -75,12 +75,18 @@ impl ChainMonitor {
 
     /// The current canonical tip's state hash.
     pub fn best(&self) -> Option<&StateHash> {
-        self.best.as_ref().and_then(|k| self.nodes.get(k)).map(|n| &n.hash)
+        self.best
+            .as_ref()
+            .and_then(|k| self.nodes.get(k))
+            .map(|n| &n.hash)
     }
 
     /// The current canonical tip's height.
     pub fn best_height(&self) -> Option<u32> {
-        self.best.as_ref().and_then(|k| self.nodes.get(k)).map(|n| n.height)
+        self.best
+            .as_ref()
+            .and_then(|k| self.nodes.get(k))
+            .map(|n| n.height)
     }
 
     /// Number of blocks currently in the window.
@@ -99,7 +105,12 @@ impl ChainMonitor {
         if self.nodes.contains_key(&key) {
             return Ingest::Duplicate;
         }
-        let prev = tip.block().header.protocol_state.previous_state_hash.to_string();
+        let prev = tip
+            .block()
+            .header
+            .protocol_state
+            .previous_state_hash
+            .to_string();
         let height = tip.height();
         self.insert(
             key.clone(),
@@ -129,7 +140,12 @@ impl ChainMonitor {
             let best_node = self.nodes.get(&best_key).expect("best is in window");
             let cand_node = self.nodes.get(&key).expect("just inserted");
             (
-                consensus_take(&best_node.cs, &cand_node.cs, &best_node.hash, &cand_node.hash),
+                consensus_take(
+                    &best_node.cs,
+                    &cand_node.cs,
+                    &best_node.hash,
+                    &cand_node.hash,
+                ),
                 best_node.height,
                 best_node.hash.clone(),
             )
@@ -155,7 +171,9 @@ impl ChainMonitor {
         } else if common.as_deref() == Some(key.as_str()) {
             Ingest::Behind { height } // new tip is an ancestor of best
         } else if common.is_some() {
-            Ingest::Fork { common_ancestor: common }
+            Ingest::Fork {
+                common_ancestor: common,
+            }
         } else {
             Ingest::Unlinked
         }

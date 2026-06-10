@@ -1,0 +1,10 @@
+# keep the build context small — these are local-only and must not be sent to the daemon
+/target
+**/target
+/openmina
+/mina_bridge
+**/captured
+*.gossipbin
+*.log
+/.git
+/tip.json

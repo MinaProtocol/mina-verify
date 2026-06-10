@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-test:
+    name: build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: System deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev
+      # rust-toolchain.toml pins the exact toolchain (1.94.1 + rustfmt + clippy).
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Build
+        run: cargo build --workspace --locked
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Clippy (advisory)
+        run: cargo clippy --workspace --all-targets || true
+
+  docker:
+    name: docker (bookworm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: mina-verify:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deb:
+    name: debian package (bookworm)
+    runs-on: ubuntu-latest
+    container: rust:bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - name: System deps
+        run: apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev git
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+      - name: Build release
+        run: cargo build --release --locked
+      - name: Package .deb
+        run: cargo deb -p mina-verify-cli --no-build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mina-verify-deb-bookworm
+          path: target/debian/*.deb

@@ -74,7 +74,11 @@ fn main() {
             Ingest::Extend { .. } => "extends best chain".to_string(),
             Ingest::Duplicate => "duplicate (already seen)".to_string(),
             Ingest::Behind { .. } => "behind best (orphan/older, same chain)".to_string(),
-            Ingest::Reorg { common_ancestor, depth, .. } => format!(
+            Ingest::Reorg {
+                common_ancestor,
+                depth,
+                ..
+            } => format!(
                 "REORG — new canonical tip; diverged at {} (rolled back {} block(s))",
                 common_ancestor.as_deref().unwrap_or("<unknown>"),
                 depth.map(|d| d.to_string()).unwrap_or_else(|| "?".into())

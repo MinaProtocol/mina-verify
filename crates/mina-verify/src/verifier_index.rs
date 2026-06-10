@@ -58,7 +58,9 @@ fn finalize(index: VerifierIndex<Fq>) -> VerifierIndex<Fq> {
     let linearization = Linearization {
         constant_term: linearization.constant_term,
         index_terms: {
-            linearization.index_terms.sort_by_key(|&(columns, _)| columns);
+            linearization
+                .index_terms
+                .sort_by_key(|&(columns, _)| columns);
             linearization.index_terms
         },
     };
