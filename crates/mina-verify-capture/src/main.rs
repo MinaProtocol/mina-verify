@@ -39,7 +39,7 @@ async fn main() {
                 ControlFlow::Continue(())
             }
         },
-        || ControlFlow::Continue(()),
+        |_| ControlFlow::Continue(()),
     )
     .await;
 
