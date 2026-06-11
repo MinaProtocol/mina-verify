@@ -9,10 +9,10 @@
 //!   query:   MessageHeader::Query(QueryHeader{tag:"get_best_tip", version:2, id}) + NeedsLength(())
 //!   reply:   MessageHeader::Response{id} + RpcResult<NeedsLength<GetBestTipV2Response>, Error>
 //!
-//! TODO(transport): opening the `coda/rpcs/0.0.1` substream needs a custom libp2p
-//! `ConnectionHandler` over the fork's libp2p (o1-labs/rust-libp2p is a monorepo;
-//! crates.io `libp2p-stream` can't be unified with it via `[patch]` — swarm-version
-//! split). Once a stream is open, hand it to [`rpc_best_tip`].
+//! Transport: [`crate::rpc_net`] opens the `coda/rpcs/0.0.1` substream (a custom libp2p
+//! `ConnectionHandler` over the fork's libp2p) and hands the stream to [`rpc_best_tip`].
+//! (crates.io `libp2p-stream` can't be used — the fork is a monorepo and its swarm
+//! version can't be `[patch]`-unified with the external crate.)
 
 use binprot::{BinProtRead, BinProtWrite};
 use libp2p::futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};

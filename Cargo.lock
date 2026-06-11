@@ -2962,6 +2962,7 @@ dependencies = [
  "mina-p2p-messages",
  "pin-project-lite",
  "tokio",
+ "void",
 ]
 
 [[package]]

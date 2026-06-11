@@ -4,6 +4,7 @@
 
 mod transport;
 pub mod rpc;
+pub mod rpc_net;
 
 use std::ops::ControlFlow;
 use std::time::Duration;
