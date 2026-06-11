@@ -3,6 +3,7 @@
 //! binary (save to disk) and by `mina-verify-monitor` (verify-before-ingest).
 
 mod transport;
+pub mod rpc;
 
 use std::ops::ControlFlow;
 use std::time::Duration;
