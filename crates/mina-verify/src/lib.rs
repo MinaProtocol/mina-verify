@@ -30,7 +30,7 @@ use std::sync::Once;
 
 use std::sync::Arc;
 
-use binprot::BinProtRead;
+use binprot::{BinProtRead, BinProtWrite};
 use mina_curves::pasta::{Fp, Fq};
 use mina_p2p_messages::gossip::GossipNetMessageV2;
 use mina_tree::proofs::verification::verify_block as verify_block_proof;
@@ -262,4 +262,14 @@ pub fn block_from_gossip_payload(payload: &[u8]) -> Result<Block, DecodeError> {
 pub fn block_from_binprot(bytes: &[u8]) -> Result<Block, DecodeError> {
     let mut cursor = bytes;
     Ok(Block::binprot_read(&mut cursor)?)
+}
+
+/// Encode a block to `MinaBlockBlockStableV2` binprot bytes — the inverse of
+/// [`block_from_binprot`], e.g. to hand a fetched block across an FFI boundary.
+pub fn block_to_binprot(block: &Block) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    block
+        .binprot_write(&mut bytes)
+        .expect("binprot_write to a Vec is infallible");
+    bytes
 }
