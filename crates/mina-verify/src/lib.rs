@@ -161,6 +161,27 @@ impl Verifier {
         })
     }
 
+    /// The embedded blockchain verifier-index JSON for a network, if shipped.
+    pub fn embedded_index_json(network: &str) -> Option<&'static str> {
+        match network {
+            "devnet" => Some(include_str!("data/devnet_blockchain_verifier_index.json")),
+            "mainnet" => Some(include_str!("data/mainnet_blockchain_verifier_index.json")),
+            _ => None,
+        }
+    }
+
+    /// Build a verifier for `network` from its embedded VK **without** touching the
+    /// process-global `NetworkConfig` (which can only be set once). This lets a single
+    /// process verify multiple networks — e.g. a mobile app switching devnet/mainnet.
+    /// Proof verification is VK-based and config-independent.
+    pub fn for_network_offline(network: &str) -> Result<Self, VerifierError> {
+        let json = Self::embedded_index_json(network)
+            .ok_or_else(|| VerifierError::UnknownNetwork(network.to_string()))?;
+        let mut v = Self::with_index_json(json)?;
+        v.network = network.to_string();
+        Ok(v)
+    }
+
     /// Devnet verifier. Panics only if a *different* network is already active —
     /// use [`Verifier::for_network`] to handle that case.
     pub fn devnet() -> Self {
