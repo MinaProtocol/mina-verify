@@ -118,9 +118,20 @@ impl Verifier {
             }
         }
         let network = mina_core::NetworkConfig::global().name;
-        // BlockVerifier::make() parses the embedded verifier-index JSON and panics
-        // (unwrap) if it can't — e.g. the stale mainnet index. Catch that and turn it
-        // into a clean error so consumers don't crash.
+        // mina-tree's embedded mainnet index is in a stale serialization format (old
+        // ark byte-arrays, no zk_rows) that its own loader can't parse. Ship our
+        // format-migrated mainnet VK and use it instead. (Verified: a live mainnet tip
+        // verifies true against it.)
+        if network == "mainnet" {
+            let mut v = Self::with_index_json(include_str!(
+                "data/mainnet_blockchain_verifier_index.json"
+            ))?;
+            v.network = network.to_string();
+            return Ok(v);
+        }
+        // devnet: mina-tree's embedded index is current-format; BlockVerifier::make()
+        // parses it and panics (unwrap) if it can't. Catch that and turn it into a
+        // clean error so consumers don't crash.
         let index = {
             let prev = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));

@@ -22,7 +22,13 @@ async fn main() {
                 .consensus_state
                 .blockchain_length
                 .as_u32();
-            let verifier = Verifier::for_network(&network).expect("verifier");
+            let verifier = match std::env::var("MINA_VK_JSON") {
+                Ok(path) => {
+                    let json = std::fs::read_to_string(&path).expect("read MINA_VK_JSON");
+                    Verifier::with_index_json(&json).expect("verifier from VK json")
+                }
+                Err(_) => Verifier::for_network(&network).expect("verifier"),
+            };
             let ok = verifier.verify_block(&block);
             println!("fetched best tip height {height} via RPC — verify_block = {ok}");
             std::process::exit(if ok { 0 } else { 2 });
