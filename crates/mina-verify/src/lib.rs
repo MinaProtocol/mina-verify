@@ -46,6 +46,9 @@ pub use account::{implied_root, ledger_root, verify_account_inclusion};
 
 pub mod precomputed;
 pub use precomputed::header_from_precomputed;
+
+pub mod ingest;
+pub use ingest::VerifiedBlock;
 /// Account + Merkle-path types for trustless state reads (re-exported from mina-tree).
 pub use mina_tree::{Account, MerklePath};
 
@@ -72,6 +75,10 @@ pub enum VerifierError {
     VerificationKeyUnavailable { network: String },
     /// A caller-supplied verifier-index JSON failed to parse.
     InvalidIndexJson(String),
+    /// The block's SNARK proof did not verify — it must not be ingested.
+    ProofInvalid,
+    /// A block could not be decoded / its fields read.
+    BlockDecode(String),
 }
 impl std::fmt::Display for VerifierError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -88,6 +95,8 @@ impl std::fmt::Display for VerifierError {
                 "could not load the {network:?} blockchain verification key (embedded index unparseable — regenerate it upstream)"
             ),
             VerifierError::InvalidIndexJson(e) => write!(f, "invalid verifier-index JSON: {e}"),
+            VerifierError::ProofInvalid => write!(f, "block proof did not verify"),
+            VerifierError::BlockDecode(e) => write!(f, "could not decode block: {e}"),
         }
     }
 }

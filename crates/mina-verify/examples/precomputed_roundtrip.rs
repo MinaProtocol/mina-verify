@@ -21,6 +21,14 @@ fn main() {
     }).to_string();
 
     let v = Verifier::for_network_offline("devnet").expect("devnet verifier");
-    let ok = v.verify_precomputed_block(&json).expect("verify precomputed");
-    println!("precomputed round-trip verify (devnet) = {ok}");
+    // the indexer's call: verify the proof AND get the proof-backed facts.
+    let vb = v.verify_precomputed_and_extract(&json).expect("proof did not verify");
+    println!("verified precomputed block (devnet):");
+    println!("  height              {}", vb.height);
+    println!("  state_hash          {}", vb.state_hash);
+    println!("  previous_state_hash {}", vb.previous_state_hash);
+    println!(
+        "  staged_ledger_hash  {}  <- indexer's replayed ledger root must match this",
+        vb.staged_ledger_hash
+    );
 }
