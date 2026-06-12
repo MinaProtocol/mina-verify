@@ -2,9 +2,9 @@
 //! each block (NewState) message to a callback. Used by the `mina-verify-capture`
 //! binary (save to disk) and by `mina-verify-monitor` (verify-before-ingest).
 
-mod transport;
 pub mod rpc;
 pub mod rpc_net;
+mod transport;
 
 use std::ops::ControlFlow;
 use std::time::Duration;

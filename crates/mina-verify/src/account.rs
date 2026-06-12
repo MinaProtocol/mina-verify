@@ -77,7 +77,8 @@ mod tests {
         .unwrap();
         let id = AccountId::new(pk, TokenId::default());
         let account = Account::create_with(id.clone(), Balance::from_u64(10101));
-        db.get_or_create_account(id.clone(), account.clone()).unwrap();
+        db.get_or_create_account(id.clone(), account.clone())
+            .unwrap();
 
         let root = db.merkle_root();
         let index = db.index_of_account(id).unwrap();
