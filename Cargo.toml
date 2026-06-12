@@ -5,6 +5,7 @@ members = [
     "crates/mina-verify-capture",
     "crates/mina-verify-cli",
     "crates/mina-verify-monitor",
+    "crates/mina-verify-server",
 ]
 
 # Pinned to o1-labs/mina-rust @ ab69eaed. NOTE: upstream (OpenMina) is unmaintained;

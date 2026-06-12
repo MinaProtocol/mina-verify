@@ -1,0 +1,17 @@
+[package]
+name = "mina-verify-server"
+version = "0.0.1"
+edition = "2021"
+description = "HTTP verify sidecar: POST a precomputed block, get its proof-backed facts."
+license = "Apache-2.0"
+
+[dependencies]
+# Only the verify library — no networking (the precomputed path needs none), so this
+# stays a small, CPU-bound, stateless service.
+mina-verify = { path = "../mina-verify" }
+# Synchronous HTTP server: verification is blocking CPU work, so a thread-per-worker
+# model fits better than async (no tokio needed).
+tiny_http = "0.12"
+serde_json = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
