@@ -30,16 +30,30 @@ use std::sync::Once;
 
 use std::sync::Arc;
 
-use binprot::BinProtRead;
+use binprot::{BinProtRead, BinProtWrite};
 use mina_curves::pasta::{Fp, Fq};
 use mina_p2p_messages::gossip::GossipNetMessageV2;
 use mina_tree::proofs::verification::verify_block as verify_block_proof;
+// On wasm `BlockVerifier::make()` is async; the wasm path uses the embedded VK JSON
+// instead (see `for_network`), so this is only needed off-wasm.
+#[cfg(not(target_family = "wasm"))]
 use mina_tree::proofs::verifiers::BlockVerifier;
 use mina_tree::proofs::VerifierIndex;
 use mina_tree::verifier::get_srs;
 
 pub mod verifier_index;
 pub use verifier_index::verifier_index_from_json;
+
+pub mod account;
+pub use account::{implied_root, ledger_root, verify_account_inclusion};
+
+pub mod precomputed;
+pub use precomputed::header_from_precomputed;
+
+pub mod ingest;
+pub use ingest::VerifiedBlock;
+/// Account + Merkle-path types for trustless state reads (re-exported from mina-tree).
+pub use mina_tree::{Account, MerklePath};
 
 // Re-exported so consumers need not depend on mina-p2p-messages directly.
 pub use mina_p2p_messages::v2::{
@@ -64,6 +78,10 @@ pub enum VerifierError {
     VerificationKeyUnavailable { network: String },
     /// A caller-supplied verifier-index JSON failed to parse.
     InvalidIndexJson(String),
+    /// The block's SNARK proof did not verify — it must not be ingested.
+    ProofInvalid,
+    /// A block could not be decoded / its fields read.
+    BlockDecode(String),
 }
 impl std::fmt::Display for VerifierError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -80,12 +98,29 @@ impl std::fmt::Display for VerifierError {
                 "could not load the {network:?} blockchain verification key (embedded index unparseable — regenerate it upstream)"
             ),
             VerifierError::InvalidIndexJson(e) => write!(f, "invalid verifier-index JSON: {e}"),
+            VerifierError::ProofInvalid => write!(f, "block proof did not verify"),
+            VerifierError::BlockDecode(e) => write!(f, "could not decode block: {e}"),
         }
     }
 }
 impl std::error::Error for VerifierError {}
 
 static WORKDIR: Once = Once::new();
+
+/// Scratch dir mina-tree uses only for failure debug dumps. `std::env::temp_dir()`
+/// panics on wasm ("no filesystem on this platform"), so use a placeholder path there
+/// — verification never actually writes unless a proof fails, and on wasm a failing
+/// proof just won't produce a dump.
+fn default_work_dir() -> std::path::PathBuf {
+    #[cfg(target_family = "wasm")]
+    {
+        std::path::PathBuf::from("/tmp")
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        std::env::temp_dir()
+    }
+}
 
 /// A block verifier bound to one network's blockchain verification key.
 pub struct Verifier {
@@ -105,7 +140,7 @@ impl Verifier {
             return Err(VerifierError::UnknownNetwork(network.to_string()));
         }
         // verify_block writes a debug dump on failure; give it a work dir once.
-        WORKDIR.call_once(|| mina_core::set_work_dir(std::env::temp_dir()));
+        WORKDIR.call_once(|| mina_core::set_work_dir(default_work_dir()));
         // init() must run before any global() access (global() lazily defaults to
         // devnet). If it's already set, confirm it matches what we asked for.
         if mina_core::NetworkConfig::init(network).is_err() {
@@ -118,10 +153,21 @@ impl Verifier {
             }
         }
         let network = mina_core::NetworkConfig::global().name;
-        // BlockVerifier::make() parses the embedded verifier-index JSON and panics
-        // (unwrap) if it can't — e.g. the stale mainnet index. Catch that and turn it
-        // into a clean error so consumers don't crash.
-        let index = {
+        // mina-tree's embedded mainnet index is in a stale serialization format (old
+        // ark byte-arrays, no zk_rows) that its own loader can't parse. Ship our
+        // format-migrated mainnet VK and use it instead. (Verified: a live mainnet tip
+        // verifies true against it.)
+        if network == "mainnet" {
+            let mut v =
+                Self::with_index_json(include_str!("data/mainnet_blockchain_verifier_index.json"))?;
+            v.network = network.to_string();
+            return Ok(v);
+        }
+        // devnet: mina-tree's embedded index is current-format; BlockVerifier::make()
+        // parses it and panics (unwrap) if it can't. Catch that and turn it into a
+        // clean error so consumers don't crash.
+        #[cfg(not(target_family = "wasm"))]
+        let index: Arc<VerifierIndex<Fq>> = {
             let prev = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
             let r = std::panic::catch_unwind(BlockVerifier::make);
@@ -129,10 +175,26 @@ impl Verifier {
             r.map_err(|_| VerifierError::VerificationKeyUnavailable {
                 network: network.to_string(),
             })?
+            .into()
+        };
+        // wasm: `BlockVerifier::make()` is async and `catch_unwind` is a no-op under
+        // panic=abort. Use the embedded devnet VK JSON instead — same key, parsed
+        // synchronously, no global mina-tree state required.
+        #[cfg(target_family = "wasm")]
+        let index: Arc<VerifierIndex<Fq>> = {
+            let json = Self::embedded_index_json("devnet").ok_or_else(|| {
+                VerifierError::VerificationKeyUnavailable {
+                    network: network.to_string(),
+                }
+            })?;
+            Arc::new(
+                verifier_index::verifier_index_from_json(json)
+                    .map_err(|e| VerifierError::InvalidIndexJson(e.to_string()))?,
+            )
         };
         Ok(Self {
             network: network.to_string(),
-            index: index.into(),
+            index,
         })
     }
 
@@ -141,13 +203,34 @@ impl Verifier {
     /// not embedded in mina-tree (mesa-mut, future hardforks) or to override a stale
     /// embedded one (mainnet). No global network config is required.
     pub fn with_index_json(json: &str) -> Result<Self, VerifierError> {
-        WORKDIR.call_once(|| mina_core::set_work_dir(std::env::temp_dir()));
+        WORKDIR.call_once(|| mina_core::set_work_dir(default_work_dir()));
         let index = verifier_index::verifier_index_from_json(json)
             .map_err(|e| VerifierError::InvalidIndexJson(e.to_string()))?;
         Ok(Self {
             network: "custom".to_string(),
             index: Arc::new(index),
         })
+    }
+
+    /// The embedded blockchain verifier-index JSON for a network, if shipped.
+    pub fn embedded_index_json(network: &str) -> Option<&'static str> {
+        match network {
+            "devnet" => Some(include_str!("data/devnet_blockchain_verifier_index.json")),
+            "mainnet" => Some(include_str!("data/mainnet_blockchain_verifier_index.json")),
+            _ => None,
+        }
+    }
+
+    /// Build a verifier for `network` from its embedded VK **without** touching the
+    /// process-global `NetworkConfig` (which can only be set once). This lets a single
+    /// process verify multiple networks — e.g. a mobile app switching devnet/mainnet.
+    /// Proof verification is VK-based and config-independent.
+    pub fn for_network_offline(network: &str) -> Result<Self, VerifierError> {
+        let json = Self::embedded_index_json(network)
+            .ok_or_else(|| VerifierError::UnknownNetwork(network.to_string()))?;
+        let mut v = Self::with_index_json(json)?;
+        v.network = network.to_string();
+        Ok(v)
     }
 
     /// Devnet verifier. Panics only if a *different* network is already active —
@@ -230,4 +313,14 @@ pub fn block_from_gossip_payload(payload: &[u8]) -> Result<Block, DecodeError> {
 pub fn block_from_binprot(bytes: &[u8]) -> Result<Block, DecodeError> {
     let mut cursor = bytes;
     Ok(Block::binprot_read(&mut cursor)?)
+}
+
+/// Encode a block to `MinaBlockBlockStableV2` binprot bytes — the inverse of
+/// [`block_from_binprot`], e.g. to hand a fetched block across an FFI boundary.
+pub fn block_to_binprot(block: &Block) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    block
+        .binprot_write(&mut bytes)
+        .expect("binprot_write to a Vec is infallible");
+    bytes
 }

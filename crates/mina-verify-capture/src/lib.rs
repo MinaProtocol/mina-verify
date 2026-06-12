@@ -2,6 +2,8 @@
 //! each block (NewState) message to a callback. Used by the `mina-verify-capture`
 //! binary (save to disk) and by `mina-verify-monitor` (verify-before-ingest).
 
+pub mod rpc;
+pub mod rpc_net;
 mod transport;
 
 use std::ops::ControlFlow;
@@ -70,13 +72,15 @@ pub fn network_seeds(network: &str) -> Option<(&'static str, &'static [&'static 
 ///
 /// Runs until `on_block` returns [`ControlFlow::Break`] or `deadline` elapses. The
 /// payload is in the exact form [`mina_verify::block_from_gossip_payload`] expects.
-pub async fn subscribe_blocks<F>(
+pub async fn subscribe_blocks<F, T>(
     chain_id: &str,
     peers: &[&str],
     deadline: Option<Duration>,
     mut on_block: F,
+    mut on_tick: T,
 ) where
     F: FnMut(&[u8]) -> ControlFlow<()>,
+    T: FnMut(usize) -> ControlFlow<()>,
 {
     let peers: Vec<Multiaddr> = peers
         .iter()
@@ -126,10 +130,16 @@ pub async fn subscribe_blocks<F>(
         }
     };
     tokio::pin!(sleep);
+    let mut tick = tokio::time::interval(Duration::from_secs(2));
+    let mut connected = std::collections::HashSet::new();
 
     loop {
         tokio::select! {
             _ = &mut sleep => { log::info!("deadline reached"); break; }
+            _ = tick.tick() => {
+                // periodic wake — emit a heartbeat (with the live peer count) / cancel while idle.
+                if let ControlFlow::Break(()) = on_tick(connected.len()) { break; }
+            }
             ev = swarm.next() => match ev {
                 Some(SwarmEvent::Behaviour(gossipsub::Event::Message { message, .. })) => {
                     // tag at offset 8: 0 = NewState (block).
@@ -139,7 +149,11 @@ pub async fn subscribe_blocks<F>(
                         }
                     }
                 }
+                Some(SwarmEvent::ConnectionEstablished { peer_id, .. }) => {
+                    connected.insert(peer_id);
+                }
                 Some(SwarmEvent::ConnectionClosed { peer_id, .. }) => {
+                    connected.remove(&peer_id);
                     // Stay in the gossip mesh: re-dial the seeds when a link drops.
                     log::debug!("conn closed {peer_id}; re-dialing");
                     for addr in &peers {

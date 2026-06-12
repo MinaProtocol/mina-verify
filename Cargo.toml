@@ -5,6 +5,7 @@ members = [
     "crates/mina-verify-capture",
     "crates/mina-verify-cli",
     "crates/mina-verify-monitor",
+    "crates/mina-verify-wasm",
 ]
 
 # Pinned to o1-labs/mina-rust @ ab69eaed. NOTE: upstream (OpenMina) is unmaintained;
@@ -31,3 +32,9 @@ log = "0.4"
 [patch.crates-io]
 num-bigint = { git = "https://github.com/openmina/num-bigint", branch = "rebase-onstack" }
 num-rational = { git = "https://github.com/openmina/num-rational", branch = "rebase-onstack" }
+
+# The openmina `rebase-onstack` num-bigint fork ICEs the compiler at opt-level=3 on
+# wasm (rustc ICE in ty/sty.rs). Build just that crate at a lower opt-level; the rest
+# of the workspace stays fully optimized.
+[profile.release.package.num-bigint]
+opt-level = 1

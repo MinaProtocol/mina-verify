@@ -13,3 +13,6 @@
 # scratch
 *.log
 /tip.json
+
+# generated wasm-bindgen output (built via crates/mina-verify-wasm/build.sh)
+/crates/mina-verify-wasm/pkg/

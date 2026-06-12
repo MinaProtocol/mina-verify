@@ -1,0 +1,19 @@
+[package]
+name = "mina-verify-wasm"
+version = "0.0.1"
+edition = "2021"
+description = "WebAssembly bindings for mina-verify: verify a Mina block's proof from JS/TS."
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+mina-verify = { path = "../mina-verify" }
+wasm-bindgen = "0.2"
+serde_json = { workspace = true }
+console_error_panic_hook = "0.1"
+
+# On wasm, randomness must come from the JS crypto API, and we need the bindgen glue.
+[target.'cfg(target_family = "wasm")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }

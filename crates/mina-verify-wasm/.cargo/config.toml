@@ -1,0 +1,21 @@
+# WebAssembly build config, mirrored from openmina's crates/node/web.
+# mina-core pulls in `wasm_thread`, so the wasm build is threaded: it needs atomics +
+# shared memory and a std rebuilt with those features (build-std), which requires a
+# NIGHTLY toolchain. Build from this directory with:
+#
+#   cargo +nightly build --release --target wasm32-unknown-unknown -p mina-verify-wasm
+#   wasm-bindgen --web --out-dir pkg \
+#     ../../target/wasm32-unknown-unknown/release/mina_verify_wasm.wasm
+[build]
+target = "wasm32-unknown-unknown"
+
+[target.wasm32-unknown-unknown]
+rustflags = [
+  "-C",
+  "target-feature=+atomics,+bulk-memory,+mutable-globals",
+  "-C",
+  "link-arg=--max-memory=4294967296",
+]
+
+[unstable]
+build-std = ["panic_abort", "std"]

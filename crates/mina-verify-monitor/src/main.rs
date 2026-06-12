@@ -79,6 +79,7 @@ async fn main() {
             let _ = tx.send(payload.to_vec());
             ControlFlow::Continue(())
         },
+        |_| ControlFlow::Continue(()),
     )
     .await;
 

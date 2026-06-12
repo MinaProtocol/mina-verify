@@ -13,5 +13,9 @@ mina-curves = { workspace = true }
 kimchi = { workspace = true }
 poly-commitment = { workspace = true }
 binprot = { workspace = true }
+base64 = "0.22"
 once_cell = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+mina-signer = { git = "https://github.com/o1-labs/proof-systems", tag = "0.3.0" }
