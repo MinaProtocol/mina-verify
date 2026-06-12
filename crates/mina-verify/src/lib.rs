@@ -34,6 +34,9 @@ use binprot::{BinProtRead, BinProtWrite};
 use mina_curves::pasta::{Fp, Fq};
 use mina_p2p_messages::gossip::GossipNetMessageV2;
 use mina_tree::proofs::verification::verify_block as verify_block_proof;
+// On wasm `BlockVerifier::make()` is async; the wasm path uses the embedded VK JSON
+// instead (see `for_network`), so this is only needed off-wasm.
+#[cfg(not(target_family = "wasm"))]
 use mina_tree::proofs::verifiers::BlockVerifier;
 use mina_tree::proofs::VerifierIndex;
 use mina_tree::verifier::get_srs;
@@ -104,6 +107,21 @@ impl std::error::Error for VerifierError {}
 
 static WORKDIR: Once = Once::new();
 
+/// Scratch dir mina-tree uses only for failure debug dumps. `std::env::temp_dir()`
+/// panics on wasm ("no filesystem on this platform"), so use a placeholder path there
+/// — verification never actually writes unless a proof fails, and on wasm a failing
+/// proof just won't produce a dump.
+fn default_work_dir() -> std::path::PathBuf {
+    #[cfg(target_family = "wasm")]
+    {
+        std::path::PathBuf::from("/tmp")
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        std::env::temp_dir()
+    }
+}
+
 /// A block verifier bound to one network's blockchain verification key.
 pub struct Verifier {
     network: String,
@@ -122,7 +140,7 @@ impl Verifier {
             return Err(VerifierError::UnknownNetwork(network.to_string()));
         }
         // verify_block writes a debug dump on failure; give it a work dir once.
-        WORKDIR.call_once(|| mina_core::set_work_dir(std::env::temp_dir()));
+        WORKDIR.call_once(|| mina_core::set_work_dir(default_work_dir()));
         // init() must run before any global() access (global() lazily defaults to
         // devnet). If it's already set, confirm it matches what we asked for.
         if mina_core::NetworkConfig::init(network).is_err() {
@@ -149,7 +167,8 @@ impl Verifier {
         // devnet: mina-tree's embedded index is current-format; BlockVerifier::make()
         // parses it and panics (unwrap) if it can't. Catch that and turn it into a
         // clean error so consumers don't crash.
-        let index = {
+        #[cfg(not(target_family = "wasm"))]
+        let index: Arc<VerifierIndex<Fq>> = {
             let prev = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
             let r = std::panic::catch_unwind(BlockVerifier::make);
@@ -157,10 +176,26 @@ impl Verifier {
             r.map_err(|_| VerifierError::VerificationKeyUnavailable {
                 network: network.to_string(),
             })?
+            .into()
+        };
+        // wasm: `BlockVerifier::make()` is async and `catch_unwind` is a no-op under
+        // panic=abort. Use the embedded devnet VK JSON instead — same key, parsed
+        // synchronously, no global mina-tree state required.
+        #[cfg(target_family = "wasm")]
+        let index: Arc<VerifierIndex<Fq>> = {
+            let json = Self::embedded_index_json("devnet").ok_or_else(|| {
+                VerifierError::VerificationKeyUnavailable {
+                    network: network.to_string(),
+                }
+            })?;
+            Arc::new(
+                verifier_index::verifier_index_from_json(json)
+                    .map_err(|e| VerifierError::InvalidIndexJson(e.to_string()))?,
+            )
         };
         Ok(Self {
             network: network.to_string(),
-            index: index.into(),
+            index,
         })
     }
 
@@ -169,7 +204,7 @@ impl Verifier {
     /// not embedded in mina-tree (mesa-mut, future hardforks) or to override a stale
     /// embedded one (mainnet). No global network config is required.
     pub fn with_index_json(json: &str) -> Result<Self, VerifierError> {
-        WORKDIR.call_once(|| mina_core::set_work_dir(std::env::temp_dir()));
+        WORKDIR.call_once(|| mina_core::set_work_dir(default_work_dir()));
         let index = verifier_index::verifier_index_from_json(json)
             .map_err(|e| VerifierError::InvalidIndexJson(e.to_string()))?;
         Ok(Self {
