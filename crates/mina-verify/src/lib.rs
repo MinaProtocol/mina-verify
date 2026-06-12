@@ -43,6 +43,9 @@ pub use verifier_index::verifier_index_from_json;
 
 pub mod account;
 pub use account::{implied_root, ledger_root, verify_account_inclusion};
+
+pub mod precomputed;
+pub use precomputed::header_from_precomputed;
 /// Account + Merkle-path types for trustless state reads (re-exported from mina-tree).
 pub use mina_tree::{Account, MerklePath};
 

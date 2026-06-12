@@ -13,6 +13,7 @@ mina-curves = { workspace = true }
 kimchi = { workspace = true }
 poly-commitment = { workspace = true }
 binprot = { workspace = true }
+base64 = "0.22"
 once_cell = { workspace = true }
 serde_json = { workspace = true }
 
