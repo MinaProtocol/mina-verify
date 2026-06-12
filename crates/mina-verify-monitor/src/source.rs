@@ -65,7 +65,10 @@ impl std::fmt::Display for SourceError {
         match self {
             SourceError::Verifier(e) => write!(f, "{e}"),
             SourceError::UnknownNetwork(n) => {
-                write!(f, "no seed peers for network {n:?} (devnet|mainnet|mesa-mut)")
+                write!(
+                    f,
+                    "no seed peers for network {n:?} (devnet|mainnet|mesa-mut)"
+                )
             }
             SourceError::Rpc(e) => write!(f, "node RPC failed: {e}"),
         }
@@ -92,9 +95,7 @@ pub async fn verify_from(
     source: BlockSource,
 ) -> Result<VerifiedBlock, SourceError> {
     match source {
-        BlockSource::Precomputed(json) => {
-            Ok(verifier.verify_precomputed_and_extract(&json)?)
-        }
+        BlockSource::Precomputed(json) => Ok(verifier.verify_precomputed_and_extract(&json)?),
         BlockSource::Node { network, deadline } => {
             let (chain_id, peers) =
                 network_seeds(&network).ok_or(SourceError::UnknownNetwork(network))?;

@@ -31,7 +31,9 @@ async fn main() {
         }
         [kind, network] if kind == "node" => (BlockSource::node(network.clone()), network.clone()),
         _ => {
-            eprintln!("usage:\n  ingest precomputed <file.json>\n  ingest node <devnet|mainnet|mesa-mut>");
+            eprintln!(
+                "usage:\n  ingest precomputed <file.json>\n  ingest node <devnet|mainnet|mesa-mut>"
+            );
             exit(2);
         }
     };

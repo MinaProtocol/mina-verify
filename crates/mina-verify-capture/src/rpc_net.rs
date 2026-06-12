@@ -145,7 +145,10 @@ pub async fn fetch_best_tip(
     peers: &[&str],
     deadline: Duration,
 ) -> Result<MinaBlockBlockStableV2, String> {
-    let addrs: Vec<Multiaddr> = peers.iter().map(|s| s.parse().expect("multiaddr")).collect();
+    let addrs: Vec<Multiaddr> = peers
+        .iter()
+        .map(|s| s.parse().expect("multiaddr"))
+        .collect();
     let local_key: libp2p::identity::Keypair = EdKeypair::from(SecretKey::generate()).into();
     let pnet_input = format!("/coda/0.0.1/{chain_id}");
 

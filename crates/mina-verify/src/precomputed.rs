@@ -28,9 +28,9 @@ pub fn header_from_precomputed(json: &str) -> Result<BlockHeader, VerifierError>
     let data = v.get("data").unwrap_or(&v);
 
     let field = |name: &str| -> Result<serde_json::Value, VerifierError> {
-        data.get(name)
-            .cloned()
-            .ok_or_else(|| VerifierError::InvalidIndexJson(format!("precomputed block missing `{name}`")))
+        data.get(name).cloned().ok_or_else(|| {
+            VerifierError::InvalidIndexJson(format!("precomputed block missing `{name}`"))
+        })
     };
 
     let protocol_state: MinaStateProtocolStateValueStableV2 =

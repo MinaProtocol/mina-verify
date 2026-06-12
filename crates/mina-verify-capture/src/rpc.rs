@@ -41,7 +41,10 @@ fn frame(header: &MessageHeader, payload: &[u8]) -> Vec<u8> {
 
 /// The RPC handshake sent on stream open.
 pub fn handshake_bytes() -> Vec<u8> {
-    frame(&MessageHeader::Response(ResponseHeader { id: HANDSHAKE_ID }), b"\x01")
+    frame(
+        &MessageHeader::Response(ResponseHeader { id: HANDSHAKE_ID }),
+        b"\x01",
+    )
 }
 
 /// A framed query for any RPC method.
@@ -71,7 +74,10 @@ pub struct RpcConn<S> {
 impl<S: AsyncRead + AsyncWrite + Unpin> RpcConn<S> {
     /// Send the handshake and return a ready connection.
     pub async fn open(mut stream: S) -> Result<Self, String> {
-        stream.write_all(&handshake_bytes()).await.map_err(|e| e.to_string())?;
+        stream
+            .write_all(&handshake_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
         stream.flush().await.map_err(|e| e.to_string())?;
         Ok(Self {
             stream,
@@ -89,15 +95,24 @@ impl<S: AsyncRead + AsyncWrite + Unpin> RpcConn<S> {
         let id = self.next_id;
         self.next_id += 1;
         let bytes = query_bytes::<M>(query, id);
-        self.stream.write_all(&bytes).await.map_err(|e| e.to_string())?;
+        self.stream
+            .write_all(&bytes)
+            .await
+            .map_err(|e| e.to_string())?;
         self.stream.flush().await.map_err(|e| e.to_string())?;
 
         loop {
             let mut len_buf = [0u8; 8];
-            self.stream.read_exact(&mut len_buf).await.map_err(|e| e.to_string())?;
+            self.stream
+                .read_exact(&mut len_buf)
+                .await
+                .map_err(|e| e.to_string())?;
             let len = u64::from_le_bytes(len_buf) as usize;
             let mut buf = vec![0u8; len];
-            self.stream.read_exact(&mut buf).await.map_err(|e| e.to_string())?;
+            self.stream
+                .read_exact(&mut buf)
+                .await
+                .map_err(|e| e.to_string())?;
 
             let mut cursor = &buf[..];
             let header = MessageHeader::binprot_read(&mut cursor).map_err(|e| e.to_string())?;

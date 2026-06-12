@@ -158,9 +158,8 @@ impl Verifier {
         // format-migrated mainnet VK and use it instead. (Verified: a live mainnet tip
         // verifies true against it.)
         if network == "mainnet" {
-            let mut v = Self::with_index_json(include_str!(
-                "data/mainnet_blockchain_verifier_index.json"
-            ))?;
+            let mut v =
+                Self::with_index_json(include_str!("data/mainnet_blockchain_verifier_index.json"))?;
             v.network = network.to_string();
             return Ok(v);
         }
