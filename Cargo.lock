@@ -2938,11 +2938,13 @@ dependencies = [
 name = "mina-verify"
 version = "0.0.1"
 dependencies = [
+ "base64 0.22.1",
  "binprot",
  "kimchi",
  "mina-core",
  "mina-curves",
  "mina-p2p-messages",
+ "mina-signer",
  "mina-tree",
  "once_cell",
  "poly-commitment",
@@ -2976,10 +2978,13 @@ dependencies = [
 name = "mina-verify-monitor"
 version = "0.0.1"
 dependencies = [
+ "base64 0.22.1",
+ "binprot",
  "env_logger",
  "log",
  "mina-verify",
  "mina-verify-capture",
+ "serde_json",
  "tokio",
 ]
 
