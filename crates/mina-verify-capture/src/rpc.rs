@@ -44,52 +44,86 @@ pub fn handshake_bytes() -> Vec<u8> {
     frame(&MessageHeader::Response(ResponseHeader { id: HANDSHAKE_ID }), b"\x01")
 }
 
-/// A framed `get_best_tip` query.
-pub fn best_tip_query_bytes() -> Vec<u8> {
+/// A framed query for any RPC method.
+fn query_bytes<M: RpcMethod>(query: &M::Query, id: u64) -> Vec<u8>
+where
+    M::Query: BinProtWrite + Clone,
+{
     let mut payload = Vec::new();
-    QueryPayload::<<GetBestTipV2 as RpcMethod>::Query>::binprot_write(&NeedsLength(()), &mut payload)
+    QueryPayload::<M::Query>::binprot_write(&NeedsLength(query.clone()), &mut payload)
         .expect("write query payload");
     let header = MessageHeader::Query(QueryHeader {
-        tag: GetBestTipV2::NAME.into(),
-        version: GetBestTipV2::VERSION,
-        id: QUERY_ID,
+        tag: M::NAME.into(),
+        version: M::VERSION,
+        id,
     });
     frame(&header, &payload)
 }
 
-/// Run `get_best_tip` over an already-open `coda/rpcs/0.0.1` stream: send the
-/// handshake + query, read messages (skipping the peer's handshake/heartbeats) until
-/// the response, and return the tip block (which the caller verifies with mina_verify).
-pub async fn rpc_best_tip<S>(mut stream: S) -> Result<MinaBlockBlockStableV2, String>
+/// A persistent RPC connection over an open `coda/rpcs/0.0.1` stream: handshake once,
+/// then issue any number of typed queries (each gets a fresh id). Reuse one connection
+/// for multi-step protocols (e.g. walking the ledger) instead of reconnecting per query.
+pub struct RpcConn<S> {
+    stream: S,
+    next_id: u64,
+}
+
+impl<S: AsyncRead + AsyncWrite + Unpin> RpcConn<S> {
+    /// Send the handshake and return a ready connection.
+    pub async fn open(mut stream: S) -> Result<Self, String> {
+        stream.write_all(&handshake_bytes()).await.map_err(|e| e.to_string())?;
+        stream.flush().await.map_err(|e| e.to_string())?;
+        Ok(Self {
+            stream,
+            next_id: QUERY_ID,
+        })
+    }
+
+    /// Issue one query and return the method's raw response (method-specific unwrapping
+    /// — Option, RpcResult, … — is left to the caller).
+    pub async fn call<M: RpcMethod>(&mut self, query: &M::Query) -> Result<M::Response, String>
+    where
+        M::Query: BinProtWrite + Clone,
+        M::Response: BinProtRead,
+    {
+        let id = self.next_id;
+        self.next_id += 1;
+        let bytes = query_bytes::<M>(query, id);
+        self.stream.write_all(&bytes).await.map_err(|e| e.to_string())?;
+        self.stream.flush().await.map_err(|e| e.to_string())?;
+
+        loop {
+            let mut len_buf = [0u8; 8];
+            self.stream.read_exact(&mut len_buf).await.map_err(|e| e.to_string())?;
+            let len = u64::from_le_bytes(len_buf) as usize;
+            let mut buf = vec![0u8; len];
+            self.stream.read_exact(&mut buf).await.map_err(|e| e.to_string())?;
+
+            let mut cursor = &buf[..];
+            let header = MessageHeader::binprot_read(&mut cursor).map_err(|e| e.to_string())?;
+            match header {
+                MessageHeader::Response(ResponseHeader { id: rid }) if rid == id => {
+                    let payload: ResponsePayload<M::Response> =
+                        BinProtRead::binprot_read(&mut cursor).map_err(|e| e.to_string())?;
+                    return payload
+                        .0
+                        .map_err(|_| "rpc kernel error response".to_string())
+                        .map(|nl| nl.0); // NeedsLength -> inner
+                }
+                // peer handshake, heartbeats, or responses to other ids — keep reading.
+                _ => continue,
+            }
+        }
+    }
+}
+
+/// Convenience: `get_best_tip` over an open stream → the tip block.
+pub async fn rpc_best_tip<S>(stream: S) -> Result<MinaBlockBlockStableV2, String>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    stream.write_all(&handshake_bytes()).await.map_err(|e| e.to_string())?;
-    stream.write_all(&best_tip_query_bytes()).await.map_err(|e| e.to_string())?;
-    stream.flush().await.map_err(|e| e.to_string())?;
-
-    loop {
-        let mut len_buf = [0u8; 8];
-        stream.read_exact(&mut len_buf).await.map_err(|e| e.to_string())?;
-        let len = u64::from_le_bytes(len_buf) as usize;
-        let mut buf = vec![0u8; len];
-        stream.read_exact(&mut buf).await.map_err(|e| e.to_string())?;
-
-        let mut cursor = &buf[..];
-        let header = MessageHeader::binprot_read(&mut cursor).map_err(|e| e.to_string())?;
-        match header {
-            MessageHeader::Response(ResponseHeader { id }) if id == QUERY_ID => {
-                let payload: ResponsePayload<<GetBestTipV2 as RpcMethod>::Response> =
-                    BinProtRead::binprot_read(&mut cursor).map_err(|e| e.to_string())?;
-                let best_tip = payload
-                    .0
-                    .map_err(|_| "rpc error response".to_string())?
-                    .0 // NeedsLength -> inner
-                    .ok_or_else(|| "peer has no best tip".to_string())?;
-                return Ok(best_tip.data);
-            }
-            // peer handshake, heartbeats, or other responses — keep reading.
-            _ => continue,
-        }
-    }
+    let mut conn = RpcConn::open(stream).await?;
+    let resp = conn.call::<GetBestTipV2>(&()).await?;
+    let tip = resp.ok_or_else(|| "peer has no best tip".to_string())?;
+    Ok(tip.data)
 }
