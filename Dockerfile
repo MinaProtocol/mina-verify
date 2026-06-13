@@ -17,8 +17,9 @@ RUN strip \
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates libssl3 \
+        ca-certificates libssl3 curl \
     && rm -rf /var/lib/apt/lists/*
+# curl: for the verify-server container healthcheck (GET /health)
 COPY --from=builder /src/target/release/mina-verify          /usr/local/bin/mina-verify
 COPY --from=builder /src/target/release/mina-verify-capture  /usr/local/bin/mina-verify-capture
 COPY --from=builder /src/target/release/mina-verify-monitor  /usr/local/bin/mina-verify-monitor
