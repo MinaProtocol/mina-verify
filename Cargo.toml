@@ -11,12 +11,14 @@ members = [
 # Pinned to o1-labs/mina-rust @ ab69eaed. NOTE: upstream (OpenMina) is unmaintained;
 # consider forking these repos under o1-labs control and repointing here.
 [workspace.dependencies]
-mina-tree = { git = "https://github.com/o1-labs/mina-rust", rev = "ab69eaed" }
-mina-p2p-messages = { git = "https://github.com/o1-labs/mina-rust", rev = "ab69eaed" }
-mina-core = { git = "https://github.com/o1-labs/mina-rust", rev = "ab69eaed" }
-mina-curves = { git = "https://github.com/o1-labs/proof-systems", tag = "0.3.0" }
-kimchi = { git = "https://github.com/o1-labs/proof-systems", tag = "0.3.0" }
-poly-commitment = { git = "https://github.com/o1-labs/proof-systems", tag = "0.3.0" }
+# ab84160 experiment: mina-rust from local worktree (patched for the ab84160 API),
+# proof-systems crates patched to the local mesa submodule (= ab84160) below.
+mina-tree = { git = "https://github.com/dkijania/mina-rust", rev = "49cc4ea3ab5de120c8fbac7fc50a5bbfc5589f8a" }
+mina-p2p-messages = { git = "https://github.com/dkijania/mina-rust", rev = "49cc4ea3ab5de120c8fbac7fc50a5bbfc5589f8a" }
+mina-core = { git = "https://github.com/dkijania/mina-rust", rev = "49cc4ea3ab5de120c8fbac7fc50a5bbfc5589f8a" }
+mina-curves = { git = "https://github.com/o1-labs/proof-systems", rev = "ab84160fa2c22290a8506a7742ac1378879fc386" }
+kimchi = { git = "https://github.com/o1-labs/proof-systems", rev = "ab84160fa2c22290a8506a7742ac1378879fc386" }
+poly-commitment = { git = "https://github.com/o1-labs/proof-systems", rev = "ab84160fa2c22290a8506a7742ac1378879fc386" }
 binprot = { git = "https://github.com/openmina/binprot-rs", rev = "400b52c" }
 once_cell = "1"
 serde_json = "1"
@@ -32,3 +34,9 @@ log = "0.4"
 [patch.crates-io]
 num-bigint = { git = "https://github.com/openmina/num-bigint", branch = "rebase-onstack" }
 num-rational = { git = "https://github.com/openmina/num-rational", branch = "rebase-onstack" }
+
+# ab84160 experiment: proof-systems crates are now referenced directly by local
+# path (= the mesa submodule at ab84160 / v0.6.0) in both this workspace's
+# [workspace.dependencies] above and in the mina-rust-ab84160 worktree's workspace,
+# so no [patch] redirect is needed. (A patch could not be used because the local
+# crates are v0.6.0 while the old git deps resolved to v0.3.0.)

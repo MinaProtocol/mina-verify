@@ -39,7 +39,7 @@ use mina_tree::proofs::VerifierIndex;
 use mina_tree::verifier::get_srs;
 
 pub mod verifier_index;
-pub use verifier_index::verifier_index_from_json;
+pub use verifier_index::{verifier_index_auto, verifier_index_from_json};
 
 pub mod account;
 pub use account::{implied_root, ledger_root, verify_account_inclusion};
@@ -169,8 +169,8 @@ impl Verifier {
     /// embedded one (mainnet). No global network config is required.
     pub fn with_index_json(json: &str) -> Result<Self, VerifierError> {
         WORKDIR.call_once(|| mina_core::set_work_dir(std::env::temp_dir()));
-        let index = verifier_index::verifier_index_from_json(json)
-            .map_err(|e| VerifierError::InvalidIndexJson(e.to_string()))?;
+        let index = verifier_index::verifier_index_auto(json)
+            .map_err(VerifierError::InvalidIndexJson)?;
         Ok(Self {
             network: "custom".to_string(),
             index: Arc::new(index),
