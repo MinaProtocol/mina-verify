@@ -36,6 +36,13 @@ use crate::{implied_root, Block};
 /// [`LEDGER_DEPTH`]-bit path from the root; the Merkle path has this many siblings.
 pub const LEDGER_DEPTH: usize = 35;
 
+/// Subtree height the live sync-ledger responder serves `What_contents` at: it returns
+/// the `2^h` accounts under a subtree rooted at depth `LEDGER_DEPTH - h`. Probed against
+/// live devnet — `h = 5` (32 accounts/batch) is served; bigger batches are refused. Used
+/// to sweep the whole ledger cheaply (≈ `num_accounts / 32` calls) to build a
+/// public-key → leaf-index map (an untrusted hint; every read still re-proves inclusion).
+pub const CONTENTS_SUBTREE_HEIGHT: usize = 5;
+
 /// Something went wrong reading an account from sync-ledger answers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountReadError {
@@ -126,6 +133,49 @@ pub fn next_epoch_ledger_hash(block: &Block) -> LedgerHash {
         .clone()
 }
 
+/// Queries to sweep every populated leaf of a `num_accounts`-account ledger of depth
+/// `depth`: one `What_contents` per subtree at depth `depth - CONTENTS_SUBTREE_HEIGHT`,
+/// in index order. Feed the answers to [`pubkey_index_pairs`] to build a
+/// public-key → leaf-index map. (Accounts are densely packed at indices `0..num`, so
+/// `ceil(num / 2^h)` subtrees cover them all.)
+pub fn ledger_sweep_queries(num_accounts: u64, depth: usize) -> Vec<SyncQuery> {
+    let subtree_depth = depth - CONTENTS_SUBTREE_HEIGHT;
+    let batch = 1u64 << CONTENTS_SUBTREE_HEIGHT;
+    let subtrees = num_accounts.div_ceil(batch);
+    (0..subtrees)
+        .map(|s| {
+            let addr = Address::from_index(AccountIndex(s), subtree_depth);
+            SyncQuery::WhatContents(addr.into())
+        })
+        .collect()
+}
+
+/// Parse the answers to [`ledger_sweep_queries`] (same order) into
+/// `(public-key address, leaf index)` pairs. Subtree `s`'s batch holds the accounts at
+/// leaf indices `s * 2^h + j` for the `j`-th returned account. The mapping is an
+/// **untrusted hint** — a wrong pair can't forge a balance, since
+/// [`verify_account_at_root`] re-proves the leaf and the caller cross-checks the pubkey.
+pub fn pubkey_index_pairs(
+    answers: &[SyncAnswer],
+    _depth: usize,
+) -> Result<Vec<(String, u64)>, AccountReadError> {
+    let batch = 1u64 << CONTENTS_SUBTREE_HEIGHT;
+    let mut pairs = Vec::new();
+    for (s, answer) in answers.iter().enumerate() {
+        match answer {
+            SyncAnswer::ContentsAre(accounts) => {
+                for (j, a) in accounts.iter().enumerate() {
+                    let account = Account::try_from(a).map_err(|_| AccountReadError::BadAccount)?;
+                    let index = s as u64 * batch + j as u64;
+                    pairs.push((account.public_key.into_address(), index));
+                }
+            }
+            _ => return Err(AccountReadError::NotContents),
+        }
+    }
+    Ok(pairs)
+}
+
 fn hash_to_fp(h: &LedgerHash) -> Result<Fp, AccountReadError> {
     h.to_field::<Fp>().map_err(|_| AccountReadError::BadHash)
 }
@@ -214,7 +264,7 @@ mod tests {
     // Answer our own queries from a real mina-tree ledger — i.e. act as the peer the
     // light node would talk to — so the test exercises the exact query plan + sibling
     // ordering against mina-tree's own Merkle layout, no live network needed.
-    fn serve(db: &mut Database<V2>, query: &SyncQuery) -> SyncAnswer {
+    fn serve(db: &mut Database<V2>, depth: usize, query: &SyncQuery) -> SyncAnswer {
         match query {
             SyncQuery::WhatChildHashes(addr) => {
                 let node: Address = addr.into();
@@ -223,10 +273,16 @@ mod tests {
                 let wrap = |fp: Fp| LedgerHash::from(MinaBaseLedgerHash0StableV1(fp.into()));
                 SyncAnswer::ChildHashesAre(wrap(l), wrap(r))
             }
+            // WhatContents at any depth: return the filled accounts under the subtree, in
+            // leaf-index order (a single account when the address is a full-depth leaf).
             SyncQuery::WhatContents(addr) => {
-                let leaf: Address = addr.into();
-                let account = db.get(leaf).unwrap();
-                SyncAnswer::ContentsAre(List::one((&*account).into()))
+                let node: Address = addr.into();
+                let span = 1u64 << (depth - node.length());
+                let base = node.to_index().0 * span;
+                let accounts: List<_> = (0..span)
+                    .filter_map(|k| db.get_at_index(AccountIndex(base + k)).map(|a| (&*a).into()))
+                    .collect();
+                SyncAnswer::ContentsAre(accounts)
             }
             SyncQuery::NumAccounts => unreachable!("not part of an account read"),
         }
@@ -260,7 +316,7 @@ mod tests {
             // Build the query plan, serve it from the same ledger, assemble back.
             let queries = sync_ledger_queries(index.0, depth);
             assert_eq!(queries.len(), depth + 1);
-            let answers: Vec<SyncAnswer> = queries.iter().map(|q| serve(&mut db, q)).collect();
+            let answers: Vec<SyncAnswer> = queries.iter().map(|q| serve(&mut db, depth, q)).collect();
             let (got_account, got_path) = account_with_path(index.0, depth, &answers).unwrap();
 
             assert_eq!(got_path, want_path, "assembled path must match mina-tree's");
@@ -297,5 +353,36 @@ mod tests {
                 got: 0
             }
         );
+    }
+
+    #[test]
+    fn sweep_reconstructs_every_leaf_index() {
+        // Build a ledger with more accounts than one What_contents batch (2^5 = 32) so
+        // the sweep spans multiple subtrees, then check the reconstructed leaf indices
+        // are exactly 0..n against mina-tree's own indexing.
+        let depth = 12;
+        let mut db = Database::create(depth as u8);
+        let pk = CompressedPubKey::from_address(
+            "B62qnzbXmRNo9q32n4SNu2mpB8e7FYYLH8NmaX6oFCBYjjQ8SbD7uzV",
+        )
+        .unwrap();
+        let n: u64 = 70; // > 2 subtrees of 32
+        for token in 1..=n {
+            let id = AccountId::new(pk.clone(), TokenId::from(token));
+            let acct = Account::create_with(id.clone(), Balance::from_u64(token));
+            db.get_or_create_account(id, acct).unwrap();
+        }
+
+        let queries = ledger_sweep_queries(n, depth);
+        assert_eq!(queries.len(), (n as usize).div_ceil(32), "one query per 32-account subtree");
+        let answers: Vec<SyncAnswer> = queries.iter().map(|q| serve(&mut db, depth, q)).collect();
+
+        let pairs = pubkey_index_pairs(&answers, depth).unwrap();
+        assert_eq!(pairs.len() as u64, n, "every account is swept exactly once");
+        let mut indices: Vec<u64> = pairs.iter().map(|(_, i)| *i).collect();
+        indices.sort_unstable();
+        assert_eq!(indices, (0..n).collect::<Vec<_>>(), "leaf indices reconstructed exactly");
+        let want_addr = pk.into_address();
+        assert!(pairs.iter().all(|(addr, _)| addr == &want_addr));
     }
 }
