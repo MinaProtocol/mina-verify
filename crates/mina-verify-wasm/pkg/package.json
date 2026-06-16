@@ -1,0 +1,15 @@
+{
+  "name": "mina-verify-wasm",
+  "version": "0.0.1",
+  "description": "WebAssembly bindings for mina-verify: verify a Mina block's proof from JS/TS.",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "main": "mina_verify_wasm.js",
+  "types": "mina_verify_wasm.d.ts",
+  "files": [
+    "mina_verify_wasm.js",
+    "mina_verify_wasm.d.ts",
+    "mina_verify_wasm_bg.wasm",
+    "mina_verify_wasm_bg.wasm.d.ts"
+  ]
+}

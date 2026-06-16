@@ -23,7 +23,5 @@ priority = "optional"
 extended-description = "Trustless Mina chain-integrity monitoring: verify block proofs, Ouroboros Samasika fork-choice, a windowed chain monitor, and a live verify-before-ingest loop."
 assets = [
     ["target/release/mina-verify", "usr/bin/", "755"],
-    ["target/release/mina-verify-capture", "usr/bin/", "755"],
-    ["target/release/mina-verify-monitor", "usr/bin/", "755"],
     ["../../README.md", "usr/share/doc/mina-verify/README.md", "644"],
 ]

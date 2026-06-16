@@ -16,6 +16,13 @@ binprot = { workspace = true }
 base64 = "0.22"
 once_cell = { workspace = true }
 serde_json = { workspace = true }
+# Ingesting the OCaml `print_blockchain_snark_vk` output (Pickles VK JSON) into a
+# kimchi VerifierIndex: parse big-endian hex field elements + build curve points.
+serde = { version = "1", features = ["derive"] }
+ark-ff = "0.5"
+ark-ec = "0.5"
+ark-poly = "0.5"
+hex = "0.4"
 
 [dev-dependencies]
 mina-signer = { git = "https://github.com/o1-labs/proof-systems", tag = "0.3.0" }

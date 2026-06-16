@@ -2,18 +2,16 @@
 resolver = "2"
 members = [
     "crates/mina-verify",
-    "crates/mina-verify-capture",
     "crates/mina-verify-cli",
-    "crates/mina-verify-monitor",
     "crates/mina-verify-server",
 ]
 
 # Pinned to o1-labs/mina-rust @ ab69eaed. NOTE: upstream (OpenMina) is unmaintained;
 # consider forking these repos under o1-labs control and repointing here.
 [workspace.dependencies]
-mina-tree = { git = "https://github.com/o1-labs/mina-rust", rev = "ab69eaed" }
-mina-p2p-messages = { git = "https://github.com/o1-labs/mina-rust", rev = "ab69eaed" }
-mina-core = { git = "https://github.com/o1-labs/mina-rust", rev = "ab69eaed" }
+mina-tree = { path = "/home/darek/work/dkijania/mina-rust/crates/ledger" }
+mina-p2p-messages = { path = "/home/darek/work/dkijania/mina-rust/crates/p2p-messages" }
+mina-core = { path = "/home/darek/work/dkijania/mina-rust/crates/core" }
 mina-curves = { git = "https://github.com/o1-labs/proof-systems", tag = "0.3.0" }
 kimchi = { git = "https://github.com/o1-labs/proof-systems", tag = "0.3.0" }
 poly-commitment = { git = "https://github.com/o1-labs/proof-systems", tag = "0.3.0" }
