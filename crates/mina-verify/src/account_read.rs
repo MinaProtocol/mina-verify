@@ -30,7 +30,7 @@ use mina_p2p_messages::v2::{
 };
 use mina_tree::{Account, AccountIndex, Address, MerklePath};
 
-use crate::{verify_account_inclusion, Block};
+use crate::{implied_root, Block};
 
 /// Depth of the Mina account ledger (mainnet / devnet / mesa). An account index is a
 /// [`LEDGER_DEPTH`]-bit path from the root; the Merkle path has this many siblings.
@@ -96,18 +96,33 @@ pub fn sync_ledger_queries(index: u64, depth: usize) -> Vec<SyncQuery> {
     queries
 }
 
-/// The block's committed ledger-root hash, in the form the `answer_sync_ledger_query`
-/// RPC expects to be paired with each [`sync_ledger_queries`] entry. The relay is
-/// proof-agnostic and never reaches into a block; the orchestrator passes this down.
-pub fn ledger_hash(block: &Block) -> LedgerHash {
+/// The **staking epoch** ledger root from a (verified) block's consensus state — a
+/// proven field, and in practice the ledger that live peers actually serve over the
+/// sync-ledger RPC (the tip's *staged* root is not served; see [`verify_account_at_root`]).
+/// Pair this with [`sync_ledger_queries`] to read finalized, proof-anchored balances.
+pub fn staking_epoch_ledger_hash(block: &Block) -> LedgerHash {
     block
         .header
         .protocol_state
         .body
-        .blockchain_state
-        .staged_ledger_hash
-        .non_snark
-        .ledger_hash
+        .consensus_state
+        .staking_epoch_data
+        .ledger
+        .hash
+        .clone()
+}
+
+/// The **next epoch** ledger root from a (verified) block's consensus state — the other
+/// proven, peer-served sync-ledger target (see [`staking_epoch_ledger_hash`]).
+pub fn next_epoch_ledger_hash(block: &Block) -> LedgerHash {
+    block
+        .header
+        .protocol_state
+        .body
+        .consensus_state
+        .next_epoch_data
+        .ledger
+        .hash
         .clone()
 }
 
@@ -165,18 +180,22 @@ pub fn account_with_path(
     Ok((account, path))
 }
 
-/// Read **and verify** the account at `index` against a verified `block`: assemble the
-/// account + path from `answers`, then confirm they fold to the block's committed
-/// ledger root. A peer that lies about the account, the path, or the ledger is caught
-/// here (`NotIncluded`). Returns the trusted account on success.
-pub fn verify_account(
-    block: &Block,
+/// Read **and verify** the account at `index` against an explicit proven ledger `root`:
+/// assemble the account + path from `answers`, then confirm they fold to `root`. The
+/// root's trustworthiness comes from being a field of an already-verified block — e.g.
+/// [`staking_epoch_ledger_hash`], which is what live peers actually serve over the
+/// sync-ledger RPC (the tip's staged root is not served). A peer that lies about the
+/// account, the path, or the ledger is caught here (`NotIncluded`). Returns the trusted
+/// account on success.
+pub fn verify_account_at_root(
+    root: &LedgerHash,
     index: u64,
     depth: usize,
     answers: &[SyncAnswer],
 ) -> Result<Account, AccountReadError> {
     let (account, path) = account_with_path(index, depth, answers)?;
-    if verify_account_inclusion(block, &account, &path) {
+    let root_fp = root.to_field::<Fp>().map_err(|_| AccountReadError::BadHash)?;
+    if implied_root(&account, &path) == root_fp {
         Ok(account)
     } else {
         Err(AccountReadError::NotIncluded)
@@ -248,6 +267,19 @@ mod tests {
             assert_eq!(got_account, want_account, "assembled account must match");
             // And the assembled path must fold to the real root.
             assert_eq!(implied_root_for(&got_account, &got_path), db.merkle_root());
+
+            // The full verify-at-root entry point (incl. LedgerHash conversion) accepts
+            // the true root and rejects a wrong one.
+            let root = LedgerHash::from(MinaBaseLedgerHash0StableV1(db.merkle_root().into()));
+            assert_eq!(
+                verify_account_at_root(&root, index.0, depth, &answers).unwrap(),
+                want_account
+            );
+            let wrong = LedgerHash::from(MinaBaseLedgerHash0StableV1(Fp::from(7u64).into()));
+            assert_eq!(
+                verify_account_at_root(&wrong, index.0, depth, &answers),
+                Err(AccountReadError::NotIncluded)
+            );
         }
     }
 
