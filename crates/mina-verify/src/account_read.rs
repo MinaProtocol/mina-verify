@@ -1,0 +1,269 @@
+//! Trustless account reads over the sync-ledger RPC — **transport-agnostic**.
+//!
+//! [`account.rs`](crate::account) is the trust core: given an account + a Merkle path
+//! it folds them to the ledger root a verified block commits to. This module is the
+//! protocol layer that *obtains* that account + path from an untrusted peer via Mina's
+//! `answer_sync_ledger_query` RPC, without trusting the peer — any lie is caught when
+//! the assembled path fails to fold to the verified root.
+//!
+//! It is deliberately transport-free: [`sync_ledger_queries`] returns the RPC *queries*
+//! to issue, and [`account_with_path`] / [`verify_account`] consume the *answers*. The
+//! caller supplies the wire (libp2p in `mina-light-node`, but equally a mobile app or
+//! the MCP server over any transport). This keeps every trust-critical step in one
+//! reusable crate instead of re-derived per consumer.
+//!
+//! ## The walk
+//! A Mina account ledger is a depth-[`LEDGER_DEPTH`] binary Merkle tree; an account
+//! sits at a leaf identified by its index. To read it:
+//! - one `What_child_hashes` query per level (root→leaf): each returns the two child
+//!   hashes, of which the **off-path** one is a sibling on the account's Merkle path;
+//! - one `What_contents` query at the leaf: returns the account itself.
+//!
+//! The siblings collected root→leaf are reversed to leaf→root — the order
+//! [`crate::implied_root`] folds (height 0 = the account's immediate sibling).
+
+use mina_curves::pasta::Fp;
+use mina_p2p_messages::v2::{
+    LedgerHash, MerkleAddressBinableArgStableV1, MinaBaseAccountBinableArgStableV2,
+    MinaLedgerSyncLedgerAnswerStableV2 as SyncAnswer,
+    MinaLedgerSyncLedgerQueryStableV1 as SyncQuery,
+};
+use mina_tree::{Account, AccountIndex, Address, MerklePath};
+
+use crate::{verify_account_inclusion, Block};
+
+/// Depth of the Mina account ledger (mainnet / devnet / mesa). An account index is a
+/// [`LEDGER_DEPTH`]-bit path from the root; the Merkle path has this many siblings.
+pub const LEDGER_DEPTH: usize = 35;
+
+/// Something went wrong reading an account from sync-ledger answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AccountReadError {
+    /// The answer vector length didn't match the query plan (`depth + 1`).
+    AnswerCountMismatch { expected: usize, got: usize },
+    /// A `What_child_hashes` slot held something other than `ChildHashesAre`.
+    NotChildHashes { level: usize },
+    /// The `What_contents` slot held something other than `ContentsAre`, or was empty.
+    NotContents,
+    /// A ledger hash in an answer wasn't a valid field element.
+    BadHash,
+    /// The account binprot didn't decode into a ledger account.
+    BadAccount,
+    /// The account + assembled path did not fold to the verified block's ledger root —
+    /// the peer served a wrong account, a wrong path, or a stale ledger.
+    NotIncluded,
+}
+
+impl std::fmt::Display for AccountReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AccountReadError::AnswerCountMismatch { expected, got } => {
+                write!(f, "expected {expected} sync-ledger answers, got {got}")
+            }
+            AccountReadError::NotChildHashes { level } => {
+                write!(f, "answer at level {level} was not ChildHashesAre")
+            }
+            AccountReadError::NotContents => write!(f, "leaf answer was not a non-empty ContentsAre"),
+            AccountReadError::BadHash => write!(f, "a sync-ledger hash was not a valid field element"),
+            AccountReadError::BadAccount => write!(f, "account binprot did not decode"),
+            AccountReadError::NotIncluded => {
+                write!(f, "account + path do not fold to the block's verified ledger root")
+            }
+        }
+    }
+}
+impl std::error::Error for AccountReadError {}
+
+/// The address of the depth-`level` node on the path to leaf `index` (its top `level`
+/// bits), as the RPC's Merkle-address argument.
+fn node_addr(index: u64, depth: usize, level: usize) -> MerkleAddressBinableArgStableV1 {
+    let prefix = index >> (depth - level); // top `level` bits
+    Address::from_index(AccountIndex(prefix), level).into()
+}
+
+/// The sync-ledger queries to read the account at `index` in a depth-`depth` ledger:
+/// one `What_child_hashes` per level root→leaf, then `What_contents` for the leaf.
+///
+/// Issue each against the verified block's ledger root (the RPC pairs it with that
+/// hash) and pass the answers, **in the same order**, to [`account_with_path`].
+pub fn sync_ledger_queries(index: u64, depth: usize) -> Vec<SyncQuery> {
+    let mut queries = Vec::with_capacity(depth + 1);
+    for level in 0..depth {
+        queries.push(SyncQuery::WhatChildHashes(node_addr(index, depth, level)));
+    }
+    let leaf = Address::from_index(AccountIndex(index), depth);
+    queries.push(SyncQuery::WhatContents(leaf.into()));
+    queries
+}
+
+/// The block's committed ledger-root hash, in the form the `answer_sync_ledger_query`
+/// RPC expects to be paired with each [`sync_ledger_queries`] entry. The relay is
+/// proof-agnostic and never reaches into a block; the orchestrator passes this down.
+pub fn ledger_hash(block: &Block) -> LedgerHash {
+    block
+        .header
+        .protocol_state
+        .body
+        .blockchain_state
+        .staged_ledger_hash
+        .non_snark
+        .ledger_hash
+        .clone()
+}
+
+fn hash_to_fp(h: &LedgerHash) -> Result<Fp, AccountReadError> {
+    h.to_field::<Fp>().map_err(|_| AccountReadError::BadHash)
+}
+
+/// Assemble the account at `index` and its Merkle path from the `answers` to
+/// [`sync_ledger_queries(index, depth)`]. **Does not verify** — fold with
+/// [`crate::verify_account_inclusion`] (or call [`verify_account`]) against a verified
+/// block before trusting the result.
+pub fn account_with_path(
+    index: u64,
+    depth: usize,
+    answers: &[SyncAnswer],
+) -> Result<(Account, Vec<MerklePath>), AccountReadError> {
+    if answers.len() != depth + 1 {
+        return Err(AccountReadError::AnswerCountMismatch {
+            expected: depth + 1,
+            got: answers.len(),
+        });
+    }
+
+    // Child-hash answers, root→leaf. At each level the on-path direction is the
+    // corresponding bit of `index` (MSB-first); the *other* child is the sibling.
+    let mut root_to_leaf = Vec::with_capacity(depth);
+    for (level, answer) in answers[..depth].iter().enumerate() {
+        let (left, right) = match answer {
+            SyncAnswer::ChildHashesAre(l, r) => (l, r),
+            _ => return Err(AccountReadError::NotChildHashes { level }),
+        };
+        let goes_right = (index >> (depth - level - 1)) & 1 == 1;
+        root_to_leaf.push(if goes_right {
+            MerklePath::Right(hash_to_fp(left)?) // we are the right child; sibling is left
+        } else {
+            MerklePath::Left(hash_to_fp(right)?) // we are the left child; sibling is right
+        });
+    }
+    root_to_leaf.reverse(); // leaf→root: the order implied_root folds (height 0 first)
+    let path = root_to_leaf;
+
+    // Leaf contents: the account at our index. `What_contents` at full leaf depth is a
+    // one-account subtree; take the first (and only) account.
+    let account = match &answers[depth] {
+        SyncAnswer::ContentsAre(accounts) => accounts
+            .iter()
+            .next()
+            .ok_or(AccountReadError::NotContents)
+            .and_then(|a: &MinaBaseAccountBinableArgStableV2| {
+                Account::try_from(a).map_err(|_| AccountReadError::BadAccount)
+            })?,
+        _ => return Err(AccountReadError::NotContents),
+    };
+
+    Ok((account, path))
+}
+
+/// Read **and verify** the account at `index` against a verified `block`: assemble the
+/// account + path from `answers`, then confirm they fold to the block's committed
+/// ledger root. A peer that lies about the account, the path, or the ledger is caught
+/// here (`NotIncluded`). Returns the trusted account on success.
+pub fn verify_account(
+    block: &Block,
+    index: u64,
+    depth: usize,
+    answers: &[SyncAnswer],
+) -> Result<Account, AccountReadError> {
+    let (account, path) = account_with_path(index, depth, answers)?;
+    if verify_account_inclusion(block, &account, &path) {
+        Ok(account)
+    } else {
+        Err(AccountReadError::NotIncluded)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mina_p2p_messages::list::List;
+    use mina_p2p_messages::v2::MinaBaseLedgerHash0StableV1;
+    use mina_signer::CompressedPubKey;
+    use mina_tree::scan_state::currency::Balance;
+    use mina_tree::{AccountId, BaseLedger, Database, TokenId, V2};
+
+    // Answer our own queries from a real mina-tree ledger — i.e. act as the peer the
+    // light node would talk to — so the test exercises the exact query plan + sibling
+    // ordering against mina-tree's own Merkle layout, no live network needed.
+    fn serve(db: &mut Database<V2>, query: &SyncQuery) -> SyncAnswer {
+        match query {
+            SyncQuery::WhatChildHashes(addr) => {
+                let node: Address = addr.into();
+                let l = db.get_inner_hash_at_addr(node.child_left()).unwrap();
+                let r = db.get_inner_hash_at_addr(node.child_right()).unwrap();
+                let wrap = |fp: Fp| LedgerHash::from(MinaBaseLedgerHash0StableV1(fp.into()));
+                SyncAnswer::ChildHashesAre(wrap(l), wrap(r))
+            }
+            SyncQuery::WhatContents(addr) => {
+                let leaf: Address = addr.into();
+                let account = db.get(leaf).unwrap();
+                SyncAnswer::ContentsAre(List::one((&*account).into()))
+            }
+            SyncQuery::NumAccounts => unreachable!("not part of an account read"),
+        }
+    }
+
+    #[test]
+    fn reconstructs_mina_tree_path_for_several_accounts() {
+        let depth = 10; // small tree; the logic is depth-agnostic
+        let mut db = Database::create(depth as u8);
+
+        // A handful of accounts at different leaf positions: one valid public key ×
+        // distinct token ids → distinct account ids → distinct leaf indices (good
+        // left/right path coverage).
+        let pk = CompressedPubKey::from_address(
+            "B62qnzbXmRNo9q32n4SNu2mpB8e7FYYLH8NmaX6oFCBYjjQ8SbD7uzV",
+        )
+        .unwrap();
+        let mut ids = Vec::new();
+        for token in 1u64..=5 {
+            let id = AccountId::new(pk.clone(), TokenId::from(token));
+            let acct = Account::create_with(id.clone(), Balance::from_u64(1000 + token));
+            db.get_or_create_account(id.clone(), acct).unwrap();
+            ids.push(id);
+        }
+
+        for id in ids {
+            let index = db.index_of_account(id.clone()).unwrap();
+            let want_path = db.merkle_path_at_index(index);
+            let want_account = *db.get_at_index(index).unwrap();
+
+            // Build the query plan, serve it from the same ledger, assemble back.
+            let queries = sync_ledger_queries(index.0, depth);
+            assert_eq!(queries.len(), depth + 1);
+            let answers: Vec<SyncAnswer> = queries.iter().map(|q| serve(&mut db, q)).collect();
+            let (got_account, got_path) = account_with_path(index.0, depth, &answers).unwrap();
+
+            assert_eq!(got_path, want_path, "assembled path must match mina-tree's");
+            assert_eq!(got_account, want_account, "assembled account must match");
+            // And the assembled path must fold to the real root.
+            assert_eq!(implied_root_for(&got_account, &got_path), db.merkle_root());
+        }
+    }
+
+    fn implied_root_for(account: &Account, path: &[MerklePath]) -> Fp {
+        crate::implied_root(account, path)
+    }
+
+    #[test]
+    fn wrong_answer_count_is_rejected() {
+        let err = account_with_path(0, 10, &[]).unwrap_err();
+        assert_eq!(
+            err,
+            AccountReadError::AnswerCountMismatch {
+                expected: 11,
+                got: 0
+            }
+        );
+    }
+}

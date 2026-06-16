@@ -47,6 +47,12 @@ pub use verifier_index::verifier_index_from_json;
 pub mod account;
 pub use account::{implied_root, ledger_root, verify_account_inclusion};
 
+pub mod account_read;
+pub use account_read::{
+    account_with_path, ledger_hash, sync_ledger_queries, verify_account, AccountReadError,
+    LEDGER_DEPTH,
+};
+
 pub mod precomputed;
 pub use precomputed::header_from_precomputed;
 
