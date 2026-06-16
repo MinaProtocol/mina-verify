@@ -133,16 +133,24 @@ pub fn next_epoch_ledger_hash(block: &Block) -> LedgerHash {
         .clone()
 }
 
-/// Queries to sweep every populated leaf of a `num_accounts`-account ledger of depth
-/// `depth`: one `What_contents` per subtree at depth `depth - CONTENTS_SUBTREE_HEIGHT`,
-/// in index order. Feed the answers to [`pubkey_index_pairs`] to build a
-/// public-key → leaf-index map. (Accounts are densely packed at indices `0..num`, so
-/// `ceil(num / 2^h)` subtrees cover them all.)
-pub fn ledger_sweep_queries(num_accounts: u64, depth: usize) -> Vec<SyncQuery> {
+/// The leaf index where the queries from [`ledger_sweep_queries`]`(start_index, …)` begin
+/// — `start_index` rounded down to its `What_contents` subtree boundary. Pass this as the
+/// `base_index` to [`pubkey_index_pairs`].
+pub fn sweep_base_index(start_index: u64) -> u64 {
+    (start_index >> CONTENTS_SUBTREE_HEIGHT) << CONTENTS_SUBTREE_HEIGHT
+}
+
+/// Queries to sweep the leaves at indices `[start_index, num_accounts)` of a depth-`depth`
+/// ledger: one `What_contents` per subtree at depth `depth - CONTENTS_SUBTREE_HEIGHT`, in
+/// index order. `start_index = 0` sweeps the whole ledger; a larger `start_index` sweeps
+/// only the appended tail (Mina indices are permanent + append-only, so a pubkey→index map
+/// is monotonic and only the growth needs re-sweeping). Feed the answers, with
+/// [`sweep_base_index(start_index)`](sweep_base_index), to [`pubkey_index_pairs`].
+pub fn ledger_sweep_queries(start_index: u64, num_accounts: u64, depth: usize) -> Vec<SyncQuery> {
     let subtree_depth = depth - CONTENTS_SUBTREE_HEIGHT;
-    let batch = 1u64 << CONTENTS_SUBTREE_HEIGHT;
-    let subtrees = num_accounts.div_ceil(batch);
-    (0..subtrees)
+    let first = start_index >> CONTENTS_SUBTREE_HEIGHT;
+    let last = num_accounts.div_ceil(1u64 << CONTENTS_SUBTREE_HEIGHT);
+    (first..last)
         .map(|s| {
             let addr = Address::from_index(AccountIndex(s), subtree_depth);
             SyncQuery::WhatContents(addr.into())
@@ -151,12 +159,15 @@ pub fn ledger_sweep_queries(num_accounts: u64, depth: usize) -> Vec<SyncQuery> {
 }
 
 /// Parse the answers to [`ledger_sweep_queries`] (same order) into
-/// `(public-key address, leaf index)` pairs. Subtree `s`'s batch holds the accounts at
-/// leaf indices `s * 2^h + j` for the `j`-th returned account. The mapping is an
-/// **untrusted hint** — a wrong pair can't forge a balance, since
-/// [`verify_account_at_root`] re-proves the leaf and the caller cross-checks the pubkey.
+/// `(public-key address, leaf index)` pairs. `base_index` is the leaf index of the first
+/// answer's subtree — [`sweep_base_index`] of the `start_index` you swept from. Subtree
+/// `s`'s batch holds the accounts at leaf indices `base_index + s * 2^h + j` for the
+/// `j`-th returned account. The mapping is an **untrusted hint** — a wrong pair can't
+/// forge a balance, since [`verify_account_at_root`] re-proves the leaf and the caller
+/// cross-checks the pubkey.
 pub fn pubkey_index_pairs(
     answers: &[SyncAnswer],
+    base_index: u64,
     _depth: usize,
 ) -> Result<Vec<(String, u64)>, AccountReadError> {
     let batch = 1u64 << CONTENTS_SUBTREE_HEIGHT;
@@ -164,10 +175,10 @@ pub fn pubkey_index_pairs(
     for (s, answer) in answers.iter().enumerate() {
         match answer {
             SyncAnswer::ContentsAre(accounts) => {
+                let subtree_base = base_index + s as u64 * batch;
                 for (j, a) in accounts.iter().enumerate() {
                     let account = Account::try_from(a).map_err(|_| AccountReadError::BadAccount)?;
-                    let index = s as u64 * batch + j as u64;
-                    pairs.push((account.public_key.into_address(), index));
+                    pairs.push((account.public_key.into_address(), subtree_base + j as u64));
                 }
             }
             _ => return Err(AccountReadError::NotContents),
@@ -373,16 +384,28 @@ mod tests {
             db.get_or_create_account(id, acct).unwrap();
         }
 
-        let queries = ledger_sweep_queries(n, depth);
+        // Full sweep from 0: every leaf index 0..n.
+        let queries = ledger_sweep_queries(0, n, depth);
         assert_eq!(queries.len(), (n as usize).div_ceil(32), "one query per 32-account subtree");
         let answers: Vec<SyncAnswer> = queries.iter().map(|q| serve(&mut db, depth, q)).collect();
-
-        let pairs = pubkey_index_pairs(&answers, depth).unwrap();
+        let pairs = pubkey_index_pairs(&answers, sweep_base_index(0), depth).unwrap();
         assert_eq!(pairs.len() as u64, n, "every account is swept exactly once");
         let mut indices: Vec<u64> = pairs.iter().map(|(_, i)| *i).collect();
         indices.sort_unstable();
         assert_eq!(indices, (0..n).collect::<Vec<_>>(), "leaf indices reconstructed exactly");
         let want_addr = pk.into_address();
         assert!(pairs.iter().all(|(addr, _)| addr == &want_addr));
+
+        // Incremental tail sweep from index 40: must reconstruct indices 40..n (rounded
+        // down to the subtree boundary, index 32), never re-deriving the wrong index.
+        let start = 40;
+        let base = sweep_base_index(start);
+        assert_eq!(base, 32);
+        let tail_q = ledger_sweep_queries(start, n, depth);
+        let tail_a: Vec<SyncAnswer> = tail_q.iter().map(|q| serve(&mut db, depth, q)).collect();
+        let tail = pubkey_index_pairs(&tail_a, base, depth).unwrap();
+        let mut tail_idx: Vec<u64> = tail.iter().map(|(_, i)| *i).collect();
+        tail_idx.sort_unstable();
+        assert_eq!(tail_idx, (base..n).collect::<Vec<_>>(), "tail sweep reconstructs indices from the subtree boundary");
     }
 }

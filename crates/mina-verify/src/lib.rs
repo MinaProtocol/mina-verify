@@ -50,8 +50,8 @@ pub use account::{implied_root, ledger_root, verify_account_inclusion};
 pub mod account_read;
 pub use account_read::{
     account_with_path, ledger_sweep_queries, next_epoch_ledger_hash, pubkey_index_pairs,
-    staking_epoch_ledger_hash, sync_ledger_queries, verify_account_at_root, AccountReadError,
-    CONTENTS_SUBTREE_HEIGHT, LEDGER_DEPTH,
+    staking_epoch_ledger_hash, sweep_base_index, sync_ledger_queries, verify_account_at_root,
+    AccountReadError, CONTENTS_SUBTREE_HEIGHT, LEDGER_DEPTH,
 };
 
 pub mod precomputed;
