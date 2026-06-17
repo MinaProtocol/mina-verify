@@ -17,6 +17,8 @@ This is the foundation of a client-side system-integrity monitor / light client.
 | [`mina-verify-capture`](crates/mina-verify-capture) | lib + bin: `subscribe_blocks` connects to a network over Mina's libp2p (pnet keyed by chain_id) and streams blocks; the bin saves them. The trust input, obtained without any trusted endpoint. |
 | [`mina-verify-cli`](crates/mina-verify-cli) | `mina-verify <file> [<file>…]` — verify a block, or feed several through the chain monitor. |
 | [`mina-verify-monitor`](crates/mina-verify-monitor) | Live **verify-before-ingest** monitor: verifies every gossiped block's proof before the chain monitor accepts it. The backend prototype. |
+| [`mina-verify-server`](crates/mina-verify-server) | HTTP **verify sidecar**: `POST /verify` a precomputed block, get its proof-backed facts. Warm verifier paid once at startup; built for a trustless indexer to gate ingestion. |
+| [`mina-verify-wasm`](crates/mina-verify-wasm) | `wasm-bindgen` bindings: verify a block's proof from JS/TS (browser / node) against the embedded devnet VK. |
 
 ## Quick start
 
@@ -28,6 +30,41 @@ cargo run -p mina-verify-capture          # writes captured/block-0.gossipbin
 cargo run -p mina-verify-cli -- captured/block-0.gossipbin
 # -> devnet block height 526706: verify_block = true
 ```
+
+## Testing & benchmarks
+
+Most tests are **fast** (no SNARK proof runs) and run on every `cargo test`. The handful
+that verify a real proof are `#[ignore]`d — a verification is seconds in release, minutes
+in an unoptimized debug build — so they're opt-in:
+
+```sh
+cargo test --workspace                       # fast: decode/router/error-path + Merkle unit tests
+cargo test --workspace --release -- --ignored  # heavy: real proof verification, end-to-end
+cargo bench -p mina-verify                   # decode + verify wall-clock (~0.4 s/block warm)
+```
+
+The heavy tests and the benchmark share one fixture, `tests/fixtures/devnet-528700.json`
+— a real precomputed devnet block (height 528700) pulled from the public
+`mina_network_block_data` bucket. It is intentionally **not strictly UTF-8** (the daemon
+emits some byte-string fields raw), so it also exercises the lossy-decode path.
+
+Coverage (the fast suite, via [`cargo-tarpaulin`](https://github.com/xd009642/tarpaulin)):
+
+```sh
+# fast decode/Merkle paths — quick, ptrace engine is fine here
+cargo tarpaulin -p mina-verify --lib --exclude-files 'openmina/*' 'mina_bridge/*' --out Stdout
+# the server router + acceptance test spawns a child process, which tarpaulin's default
+# ptrace engine can't follow — use the LLVM engine for those:
+cargo tarpaulin -p mina-verify-server --engine llvm --exclude-files 'openmina/*' --out Stdout
+```
+
+> Notes:
+> - Instrumented coverage recompiles the whole dependency graph (including the large
+>   `mina-tree`), so the first run is slow; always pass `--exclude-files 'openmina/*'`
+>   so the report measures *our* code, not the vendored proof core.
+> - The fast lib tests cover the decode path well (`precomputed.rs` ~92 %); the
+>   verify / extract / router paths are exercised by the **heavy `#[ignore]`d** tests,
+>   which a coverage run only sees with `--release -- --ignored` (and the LLVM engine).
 
 ## How it works
 

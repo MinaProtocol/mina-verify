@@ -37,6 +37,21 @@ The caller ingests iff `valid` is `true`, keyed by the returned (proof-backed) h
 | `MINA_NETWORK` | embedded-VK network when `MINA_VK_JSON` is unset (`devnet` / `mainnet`) | `devnet` |
 | `VERIFY_THREADS` | worker threads (verification is CPU-bound) | available parallelism |
 
+> When `MINA_VK_JSON` is set, `/health` reports `"network": "custom"` — the verifier
+> index JSON carries the key, not the network name.
+
+## Robustness
+
+The body is **untrusted** input, so the service is hardened against a single bad request
+taking down a worker:
+
+- **Body cap** — at most 32 MiB is buffered per request (`MAX_BODY_BYTES`); a precomputed
+  block is ~1 MB, so this is generous. An oversized body is truncated → the block fails to
+  decode → a clean `400`, never an OOM.
+- **Per-request panic isolation** — proof verification runs inside `catch_unwind`. A
+  malformed-but-decodable block that trips an assertion deep in the verifier fails *that*
+  request (`500 { "valid": false }`) instead of killing a worker thread.
+
 ## Run
 
 ```sh
@@ -50,8 +65,11 @@ curl -s localhost:8090/health
 curl -s -X POST --data-binary @block.json localhost:8090/verify
 ```
 
-Verification on a native release build is ~1–2 s per block, so an indexer can afford to
-verify **every** block (not just the tip).
+On a native release build, the warm steady-state is **~0.4 s per block** (~2.25
+blocks/sec/core; see `cargo bench -p mina-verify`). The first verify is ~2.7 s (it primes
+the globally-cached SRS) and building the verifier at startup is a further ~5 s — both
+one-time costs the long-lived service pays once. So an indexer can afford to verify
+**every** block, not just the tip.
 
 ## Trustless-indexer topology
 
@@ -84,3 +102,22 @@ curl -fsS -X POST --data-binary @"$1" "${VERIFIER_URL:-http://mina-verifier:8090
 
 The sidecar's Rust toolchain (1.94.1 + mina-verify's patched lock) stays bottled up in its
 own container — it never touches the indexer's build.
+
+## Tests
+
+```sh
+# fast: router + endpoint behaviour (no SNARK proof runs). The one slow step is the
+# debug-mode VK parse at startup, so it's built once and shared.
+cargo test -p mina-verify-server
+
+# heavy: real end-to-end proof verification of a captured block (valid + tampered).
+# Seconds in release, so run release:
+cargo test -p mina-verify-server --release -- --ignored
+```
+
+- `tests/dispatch.rs` — pure router unit tests (`dispatch`): health, 404, and the
+  `400 valid:false` error mapping, against a shared embedded-VK verifier.
+- `tests/acceptance.rs` — spawns the real binary on an ephemeral port and drives it over a
+  socket (dependency-free HTTP/1.1 client). The fast test covers health / bad-request /
+  not-found; the `#[ignore]`d tests POST a real block (→ `valid:true` with the right
+  hashes) and a tampered one (→ `valid:false`).
