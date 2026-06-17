@@ -160,16 +160,25 @@ where
         .with_tokio()
         .with_other_transport(|local_key| {
             let pnet = pnet::PnetConfig::new(pnet::PreSharedKey::new(pnet_key));
-            tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
+            let base = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
                 .and_then(move |socket, _| pnet.handshake(socket))
                 .upgrade(upgrade::Version::V1)
                 .authenticate(noise::Config::new(local_key).expect("libp2p-noise static keypair"))
                 .multiplex(yamux)
                 .timeout(std::time::Duration::from_secs(20))
-                .boxed()
+                .boxed();
+            // Resolve `/dns4/…` seed multiaddrs with an explicit resolver config rather
+            // than the OS one. libp2p's `.with_dns()` reads `/etc/resolv.conf`, which does
+            // not exist on Android (libp2p-dns docs note it "fails (panics even!)" there) —
+            // so on a phone the seeds never resolve and we hang forever on "Connecting".
+            // Cloudflare's 1.1.1.1 is hard-coded here so the same path works on every OS.
+            libp2p::dns::tokio::Transport::custom(
+                base,
+                libp2p::dns::ResolverConfig::cloudflare(),
+                libp2p::dns::ResolverOpts::default(),
+            )
+            .boxed()
         })
-        .unwrap()
-        .with_dns()
         .unwrap()
         .with_behaviour(|_| behaviour)
         .unwrap()
