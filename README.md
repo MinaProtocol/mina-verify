@@ -51,12 +51,20 @@ emits some byte-string fields raw), so it also exercises the lossy-decode path.
 Coverage (the fast suite, via [`cargo-tarpaulin`](https://github.com/xd009642/tarpaulin)):
 
 ```sh
-cargo tarpaulin -p mina-verify -p mina-verify-server --skip-clean --out Stdout
+# fast decode/Merkle paths — quick, ptrace engine is fine here
+cargo tarpaulin -p mina-verify --lib --exclude-files 'openmina/*' 'mina_bridge/*' --out Stdout
+# the server router + acceptance test spawns a child process, which tarpaulin's default
+# ptrace engine can't follow — use the LLVM engine for those:
+cargo tarpaulin -p mina-verify-server --engine llvm --exclude-files 'openmina/*' --out Stdout
 ```
 
-> Note: instrumented coverage recompiles the whole dependency graph (including the large
-> `mina-tree`), so the first run is slow. Coverage focuses on *our* code — the decode,
-> router, error-mapping, and Merkle-inclusion logic — not the external proof core.
+> Notes:
+> - Instrumented coverage recompiles the whole dependency graph (including the large
+>   `mina-tree`), so the first run is slow; always pass `--exclude-files 'openmina/*'`
+>   so the report measures *our* code, not the vendored proof core.
+> - The fast lib tests cover the decode path well (`precomputed.rs` ~92 %); the
+>   verify / extract / router paths are exercised by the **heavy `#[ignore]`d** tests,
+>   which a coverage run only sees with `--release -- --ignored` (and the LLVM engine).
 
 ## How it works
 
