@@ -1,0 +1,41 @@
+# Trustless-indexer topology: the indexer gates ingestion on the verify sidecar.
+#
+#   docker build -t mina-verify:sidecar ../../..      # from this repo root
+#   docker compose -f crates/mina-verify-server/deploy/docker-compose.yml up
+#
+# devnet/mainnet work out of the box (embedded VK). For mesa/mesa-mut, mount a
+# verifier-index JSON and set MINA_VK_JSON instead of MINA_NETWORK.
+services:
+  mina-verifier:
+    image: mina-verify:sidecar
+    entrypoint: mina-verify-server
+    environment:
+      MINA_NETWORK: devnet
+      BIND: 0.0.0.0:8090
+      # mesa / mesa-mut (no embedded VK): mount the index and use it instead —
+      # MINA_VK_JSON: /vk/mesa_blockchain_verifier_index.json
+    # volumes:
+    #   - ./mesa_blockchain_verifier_index.json:/vk/mesa_blockchain_verifier_index.json:ro
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8090/health | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # The indexer image gates canonical-block ingestion on the verifier. Stubbed — wire
+  # your indexer image and flags here. The shim (verify-block.sh) is mounted in and
+  # passed as --verify-block-exe; VERIFIER_URL points it at the sidecar.
+  #
+  # mina-indexer:
+  #   image: mina-indexer
+  #   environment:
+  #     VERIFIER_URL: http://mina-verifier:8090
+  #   volumes:
+  #     - ./verify-block.sh:/app/verify-block.sh:ro
+  #   command: ["mina-indexer", "...", "--verify-block-exe", "/app/verify-block.sh"]
+  #   depends_on:
+  #     mina-verifier:
+  #       condition: service_healthy
