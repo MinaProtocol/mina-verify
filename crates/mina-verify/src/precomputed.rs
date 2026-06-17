@@ -70,3 +70,83 @@ impl Verifier {
         Ok(self.verify_header(&header_from_precomputed(json)?))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A real devnet precomputed block ({version,data} envelope; not strictly UTF-8). These
+    // tests exercise only the JSON/decode path — no SNARK proof runs — so they're fast.
+    const FIXTURE_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/fixtures/devnet-528700.json"
+    );
+
+    fn fixture_json() -> String {
+        let bytes = std::fs::read(FIXTURE_PATH).expect("read fixture block");
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    fn height(h: &BlockHeader) -> u32 {
+        h.protocol_state
+            .body
+            .consensus_state
+            .blockchain_length
+            .as_u32()
+    }
+
+    #[test]
+    fn decodes_a_real_precomputed_block() {
+        let header = header_from_precomputed(&fixture_json()).expect("decode");
+        assert_eq!(height(&header), 528700);
+    }
+
+    #[test]
+    fn accepts_a_bare_block_without_the_data_envelope() {
+        // header_from_precomputed unwraps `data` if present, else treats the value as the
+        // block. Feed the inner object directly to cover the bare path.
+        let v: serde_json::Value = serde_json::from_str(&fixture_json()).unwrap();
+        let bare = v.get("data").expect("data envelope").to_string();
+        let header = header_from_precomputed(&bare).expect("decode bare");
+        assert_eq!(height(&header), 528700);
+    }
+
+    #[test]
+    fn rejects_non_json() {
+        let err = header_from_precomputed("this is not json").unwrap_err();
+        assert!(matches!(err, VerifierError::InvalidIndexJson(_)), "{err:?}");
+    }
+
+    #[test]
+    fn rejects_missing_protocol_state() {
+        let err = header_from_precomputed("{}").unwrap_err();
+        match err {
+            VerifierError::InvalidIndexJson(m) => assert!(m.contains("protocol_state"), "{m}"),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_missing_proof() {
+        let mut v: serde_json::Value = serde_json::from_str(&fixture_json()).unwrap();
+        v["data"]
+            .as_object_mut()
+            .unwrap()
+            .remove("protocol_state_proof");
+        let err = header_from_precomputed(&v.to_string()).unwrap_err();
+        match err {
+            VerifierError::InvalidIndexJson(m) => {
+                assert!(m.contains("protocol_state_proof"), "{m}")
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_non_base64_proof() {
+        let mut v: serde_json::Value = serde_json::from_str(&fixture_json()).unwrap();
+        v["data"]["protocol_state_proof"] = serde_json::json!("!!! not base64 !!!");
+        let err = header_from_precomputed(&v.to_string()).unwrap_err();
+        assert!(matches!(err, VerifierError::InvalidIndexJson(_)), "{err:?}");
+    }
+}

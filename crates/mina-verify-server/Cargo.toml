@@ -15,3 +15,9 @@ tiny_http = "0.12"
 serde_json = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
+
+[dev-dependencies]
+# Integration tests are separate crates: they see the lib + dev-dependencies, not the
+# package's normal [dependencies]. Re-list what the tests name directly.
+mina-verify = { path = "../mina-verify" }
+serde_json = { workspace = true }

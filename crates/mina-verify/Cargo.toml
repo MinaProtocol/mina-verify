@@ -19,3 +19,9 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 mina-signer = { git = "https://github.com/o1-labs/proof-systems", tag = "0.3.0" }
+# Integration tests / benches are separate crates and don't inherit [dependencies].
+serde_json = { workspace = true }
+
+[[bench]]
+name = "verify"
+harness = false
