@@ -70,11 +70,18 @@ impl std::fmt::Display for AccountReadError {
             AccountReadError::NotChildHashes { level } => {
                 write!(f, "answer at level {level} was not ChildHashesAre")
             }
-            AccountReadError::NotContents => write!(f, "leaf answer was not a non-empty ContentsAre"),
-            AccountReadError::BadHash => write!(f, "a sync-ledger hash was not a valid field element"),
+            AccountReadError::NotContents => {
+                write!(f, "leaf answer was not a non-empty ContentsAre")
+            }
+            AccountReadError::BadHash => {
+                write!(f, "a sync-ledger hash was not a valid field element")
+            }
             AccountReadError::BadAccount => write!(f, "account binprot did not decode"),
             AccountReadError::NotIncluded => {
-                write!(f, "account + path do not fold to the block's verified ledger root")
+                write!(
+                    f,
+                    "account + path do not fold to the block's verified ledger root"
+                )
             }
         }
     }
@@ -255,7 +262,9 @@ pub fn verify_account_at_root(
     answers: &[SyncAnswer],
 ) -> Result<Account, AccountReadError> {
     let (account, path) = account_with_path(index, depth, answers)?;
-    let root_fp = root.to_field::<Fp>().map_err(|_| AccountReadError::BadHash)?;
+    let root_fp = root
+        .to_field::<Fp>()
+        .map_err(|_| AccountReadError::BadHash)?;
     if implied_root(&account, &path) == root_fp {
         Ok(account)
     } else {
@@ -291,7 +300,10 @@ mod tests {
                 let span = 1u64 << (depth - node.length());
                 let base = node.to_index().0 * span;
                 let accounts: List<_> = (0..span)
-                    .filter_map(|k| db.get_at_index(AccountIndex(base + k)).map(|a| (&*a).into()))
+                    .filter_map(|k| {
+                        db.get_at_index(AccountIndex(base + k))
+                            .map(|a| (&*a).into())
+                    })
                     .collect();
                 SyncAnswer::ContentsAre(accounts)
             }
@@ -327,7 +339,8 @@ mod tests {
             // Build the query plan, serve it from the same ledger, assemble back.
             let queries = sync_ledger_queries(index.0, depth);
             assert_eq!(queries.len(), depth + 1);
-            let answers: Vec<SyncAnswer> = queries.iter().map(|q| serve(&mut db, depth, q)).collect();
+            let answers: Vec<SyncAnswer> =
+                queries.iter().map(|q| serve(&mut db, depth, q)).collect();
             let (got_account, got_path) = account_with_path(index.0, depth, &answers).unwrap();
 
             assert_eq!(got_path, want_path, "assembled path must match mina-tree's");
@@ -386,13 +399,21 @@ mod tests {
 
         // Full sweep from 0: every leaf index 0..n.
         let queries = ledger_sweep_queries(0, n, depth);
-        assert_eq!(queries.len(), (n as usize).div_ceil(32), "one query per 32-account subtree");
+        assert_eq!(
+            queries.len(),
+            (n as usize).div_ceil(32),
+            "one query per 32-account subtree"
+        );
         let answers: Vec<SyncAnswer> = queries.iter().map(|q| serve(&mut db, depth, q)).collect();
         let pairs = pubkey_index_pairs(&answers, sweep_base_index(0), depth).unwrap();
         assert_eq!(pairs.len() as u64, n, "every account is swept exactly once");
         let mut indices: Vec<u64> = pairs.iter().map(|(_, i)| *i).collect();
         indices.sort_unstable();
-        assert_eq!(indices, (0..n).collect::<Vec<_>>(), "leaf indices reconstructed exactly");
+        assert_eq!(
+            indices,
+            (0..n).collect::<Vec<_>>(),
+            "leaf indices reconstructed exactly"
+        );
         let want_addr = pk.into_address();
         assert!(pairs.iter().all(|(addr, _)| addr == &want_addr));
 
@@ -406,6 +427,10 @@ mod tests {
         let tail = pubkey_index_pairs(&tail_a, base, depth).unwrap();
         let mut tail_idx: Vec<u64> = tail.iter().map(|(_, i)| *i).collect();
         tail_idx.sort_unstable();
-        assert_eq!(tail_idx, (base..n).collect::<Vec<_>>(), "tail sweep reconstructs indices from the subtree boundary");
+        assert_eq!(
+            tail_idx,
+            (base..n).collect::<Vec<_>>(),
+            "tail sweep reconstructs indices from the subtree boundary"
+        );
     }
 }

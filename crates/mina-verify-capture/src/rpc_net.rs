@@ -232,7 +232,9 @@ pub async fn fetch_sync_ledger_answers(
                 let resp = conn
                     .call::<AnswerSyncLedgerQueryV2>(&(root.clone(), query.clone()))
                     .await?;
-                let answer = resp.0.map_err(|e| format!("sync-ledger rpc error: {e:?}"))?;
+                let answer = resp
+                    .0
+                    .map_err(|e| format!("sync-ledger rpc error: {e:?}"))?;
                 answers.push(answer);
             }
             Ok::<_, String>(answers)
