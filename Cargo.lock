@@ -2954,6 +2954,7 @@ dependencies = [
  "mina-tree",
  "once_cell",
  "poly-commitment",
+ "poseidon",
  "serde",
  "serde_json",
 ]

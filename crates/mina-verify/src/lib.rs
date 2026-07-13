@@ -44,6 +44,11 @@ pub use verifier_index::{verifier_index_auto, verifier_index_from_json};
 pub mod account;
 pub use account::{implied_root, ledger_root, verify_account_inclusion};
 
+/// Mesa (transaction version 3) ledger support. Mesa widened the zkApp application state
+/// from 8 field elements to 32, so mina-tree's `Account` cannot represent -- or hash -- a
+/// mesa account. `mesa` supplies the account model and its Merkle ledger.
+pub mod mesa;
+
 pub mod precomputed;
 pub use precomputed::header_from_precomputed;
 
