@@ -54,7 +54,7 @@ fn v2_genesis_ledger_hashes_to_the_protocol_root() {
         .iter()
         .enumerate()
         .map(|(i, a)| {
-            a.to_account_of::<8>()
+            a.to_account_of::<8>(mina_verify::mesa::BERKELEY)
                 .unwrap_or_else(|e| panic!("account #{i}: {e}"))
         })
         .collect();
@@ -65,7 +65,7 @@ fn v2_genesis_ledger_hashes_to_the_protocol_root() {
     );
 
     let t = Instant::now();
-    let ledger = MesaLedger::new(&accounts);
+    let ledger = MesaLedger::new(&accounts, mina_verify::mesa::BERKELEY);
     let got = to_base58(ledger.merkle_root());
     println!("merkle_root : {:.2?}", t.elapsed());
 

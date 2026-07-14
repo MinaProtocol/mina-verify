@@ -18,11 +18,11 @@ pub mod json;
 pub mod ledger;
 
 pub use account::{
-    default_zkapp_hash_of, AccountOf, V2Account, V2ZkAppAccount, ZkAppAccountOf,
+    default_zkapp_hash_of, user_default_permissions, AccountOf, LedgerParams, V2Account,
+    V2ZkAppAccount, ZkAppAccountOf, BERKELEY, MESA, MESA_TXN_VERSION, V2_TXN_VERSION,
     V2_ZKAPP_STATE_SIZE,
     default_mesa_zkapp_hash, MesaAccount, MesaZkAppAccount, MESA_ZKAPP_STATE_SIZE,
 };
 pub use ledger::{
-    empty_hash_at_height, hash_node, implied_root, verify_account_inclusion, MesaLedger,
-    MESA_LEDGER_DEPTH,
+    hash_node, implied_root, verify_account_inclusion, MesaLedger, MESA_LEDGER_DEPTH,
 };

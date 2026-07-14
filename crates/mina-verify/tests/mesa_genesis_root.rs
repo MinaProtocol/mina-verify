@@ -60,7 +60,7 @@ fn mesa_genesis_ledger_hashes_to_the_protocol_root() {
         .iter()
         .enumerate()
         .map(|(i, a)| {
-            a.to_account_of::<32>()
+            a.to_account_of::<32>(mina_verify::mesa::MESA)
                 .unwrap_or_else(|e| panic!("account #{i}: {e}"))
         })
         .collect();
@@ -71,7 +71,7 @@ fn mesa_genesis_ledger_hashes_to_the_protocol_root() {
     assert!(zkapps > 0, "no zkApp accounts -- the mesa delta is untested");
 
     let t = Instant::now();
-    let ledger = MesaLedger::new(&accounts);
+    let ledger = MesaLedger::new(&accounts, mina_verify::mesa::MESA);
     let root = ledger.merkle_root();
     println!("merkle_root : {:.2?}", t.elapsed());
 

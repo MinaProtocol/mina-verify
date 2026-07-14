@@ -34,6 +34,54 @@ pub const MESA_ZKAPP_STATE_SIZE: usize = 32;
 /// V2's (devnet / mainnet-hardfork) zkApp application state width.
 pub const V2_ZKAPP_STATE_SIZE: usize = 8;
 
+/// A network's ledger-hashing constants.
+///
+/// These are **independent** of each other, and none may be inferred from another. They
+/// look correlated across the networks we happen to know, and acting on that appearance is
+/// how the mesa root stayed broken: mina-tree's compiled-in `TXN_VERSION_CURRENT` (3) was
+/// silently used for a network whose version is 4, corrupting every empty subtree.
+///
+/// Pin each one against the network's *own* daemon:
+///
+/// ```sh
+/// echo '[]' > empty.json
+/// docker run --rm -v "$PWD":/w --entrypoint mina <that-network's-image> \
+///   ledger hash --ledger-file /w/empty.json
+/// ```
+///
+/// The empty ledger's root depends on nothing but the empty account, so it pins these
+/// exactly (see `tests/mesa_solve_empty.rs`). Beware: a "generic"/test build is not a
+/// protocol reference -- the devnet-generic image reports ledger depth 10.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LedgerParams {
+    /// zkApp application state width. Also the `N` of [`AccountOf`].
+    pub zkapp_state_size: usize,
+    /// The protocol's current transaction version, hashed into the empty account.
+    pub txn_version: u32,
+    /// Merkle depth of the account ledger.
+    pub depth: usize,
+}
+
+/// mesa-mut. Verified: the genesis ledger hashes to
+/// `jxicjVogngTDjJh5EEsTUrvBxa3R4fhepqrAeexiRVMogJGqHdT`.
+pub const MESA: LedgerParams = LedgerParams {
+    zkapp_state_size: MESA_ZKAPP_STATE_SIZE,
+    txn_version: MESA_TXN_VERSION,
+    depth: 35,
+};
+
+/// Berkeley / mainnet-hardfork. Verified: the genesis ledger hashes to
+/// `jwNw4qb6tnNhpQNxiMLem9WumxZTwmbSx3fYXW4FP3hZRkoQJSE`.
+pub const BERKELEY: LedgerParams = LedgerParams {
+    zkapp_state_size: V2_ZKAPP_STATE_SIZE,
+    txn_version: V2_TXN_VERSION,
+    depth: 35,
+};
+
+// NOTE: devnet is deliberately absent. The only devnet image to hand is a *generic* build
+// (ledger depth 10), which is not devnet's protocol -- so its constants are unpinned.
+// Add them once a real devnet daemon has been asked for its empty-ledger hash.
+
 /// mesa-mut's transaction version.
 ///
 /// This matters far more than it looks. `Account::empty()` takes its permissions from
@@ -252,20 +300,12 @@ impl<const N: usize> AccountOf<N> {
 
     /// The empty account -- the leaf of every unoccupied slot in the ledger.
     ///
-    /// The transaction version is picked from the state width, because the two travel
-    /// together: width 8 is Berkeley (txn version 3), width 32 is mesa (txn version 4).
-    /// It is hashed in via the default permissions, so getting it wrong corrupts every
-    /// ledger root -- see [`MESA_TXN_VERSION`].
-    pub fn empty() -> Self {
-        let txn_version = match N {
-            MESA_ZKAPP_STATE_SIZE => MESA_TXN_VERSION,
-            _ => V2_TXN_VERSION,
-        };
-
-        Self::empty_with_txn_version(txn_version)
-    }
-
-    /// The empty account for an explicit transaction version.
+    /// The transaction version is **required**, never inferred. It is hashed into this
+    /// account via the default permissions, and this account is hashed into every empty
+    /// subtree, so a wrong value silently corrupts every ledger root -- which is exactly
+    /// the bug that cost us the mesa root. Width and transaction version are *independent*
+    /// protocol constants that happen to travel together on the networks we know; take
+    /// them from [`LedgerParams`], pinned per network against that network's own daemon.
     pub fn empty_with_txn_version(txn_version: u32) -> Self {
         Self {
             public_key: CompressedPubKey::empty(),

@@ -40,13 +40,13 @@ fn probe_ledger_depth() {
 
     let accounts: Vec<MesaAccount> = json
         .iter()
-        .map(|a| a.to_account_of::<32>().expect("convert"))
+        .map(|a| a.to_account_of::<32>(mina_verify::mesa::MESA).expect("convert"))
         .collect();
     println!("accounts: {}", accounts.len());
 
     // leaves, and the empty-subtree hash at each height
     let mut current: Vec<Fp> = accounts.iter().map(MesaAccount::hash).collect();
-    let mut empty = MesaAccount::empty().hash();
+    let mut empty = MesaAccount::empty_with_txn_version(mina_verify::mesa::MESA_TXN_VERSION).hash();
 
     println!("\ndepth -> root");
     for height in 0..45usize {

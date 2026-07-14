@@ -22,10 +22,10 @@ fn print_prefix_root() {
         .iter()
         .take(limit)
         .enumerate()
-        .map(|(i, a)| a.to_account_of::<32>().unwrap_or_else(|e| panic!("#{i}: {e}")))
+        .map(|(i, a)| a.to_account_of::<32>(mina_verify::mesa::MESA).unwrap_or_else(|e| panic!("#{i}: {e}")))
         .collect();
 
-    let root: Fp = MesaLedger::new(&accounts).merkle_root();
+    let root: Fp = MesaLedger::new(&accounts, mina_verify::mesa::MESA).merkle_root();
     let hash: LedgerHash = MinaBaseLedgerHash0StableV1(root.into()).into();
 
     println!("OURS {} {}", accounts.len(), hash);

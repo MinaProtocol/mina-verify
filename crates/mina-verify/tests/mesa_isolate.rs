@@ -44,7 +44,7 @@ fn our_tree_reproduces_mina_trees_root() {
 
     // ours, given the same leaves and the same empty account
     let leaves: Vec<Fp> = accounts.iter().map(TreeAccount::hash).collect();
-    let ours = MesaLedger::from_leaves_with_empty(leaves, TreeAccount::empty().hash());
+    let ours = MesaLedger::from_leaves_with_empty(leaves, TreeAccount::empty().hash(), 35);
 
     assert_eq!(
         ours.merkle_root(),
@@ -62,7 +62,7 @@ fn our_account_packing_matches_mina_trees() {
     tree.nonce = mina_tree::scan_state::currency::Nonce::from_u32(7);
 
     // the same account, in our model
-    let mut mesa = MesaAccount::empty();
+    let mut mesa = MesaAccount::empty_with_txn_version(mina_verify::mesa::MESA_TXN_VERSION);
     mesa.public_key = tree.public_key.clone();
     mesa.token_id = tree.token_id.clone();
     mesa.token_symbol = tree.token_symbol.clone();

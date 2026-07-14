@@ -12,7 +12,7 @@ use mina_tree::{
 use mina_p2p_messages::v2::MinaBaseVerificationKeyWireStableV1;
 use mina_signer::CompressedPubKey;
 
-use super::account::{AccountOf, ZkAppAccountOf};
+use super::account::{user_default_permissions, AccountOf, LedgerParams, ZkAppAccountOf};
 
 /// Mina's account-ledger Merkle depth (openmina: `crates/node/src/ledger/mod.rs`).
 pub const LEDGER_DEPTH: usize = 35;
@@ -206,11 +206,15 @@ impl Account {
             .map_or(Ok(Timing::Untimed), AccountTiming::to_timing)
     }
 
-    pub fn permissions(&self) -> Permissions<AuthRequired> {
-        self.permissions.as_ref().map_or(
-            Permissions::user_default(),
-            AccountPermissions::to_permissions,
-        )
+    /// An account that states no permissions falls back to the network's *user default* --
+    /// which carries the transaction version. mina-tree's `user_default()` would hardcode
+    /// its own compiled-in version, so it is passed in rather than assumed.
+    pub fn permissions(&self, txn_version: u32) -> Permissions<AuthRequired> {
+        self.permissions
+            .as_ref()
+            .map_or(user_default_permissions(txn_version), |permissions| {
+                permissions.to_permissions()
+            })
     }
 
     pub fn zkapp<const N: usize>(
@@ -224,8 +228,11 @@ impl Account {
 
     /// Convert one state-dump account into the account the protocol hashes. `N` is the
     /// zkApp state width: 8 for V2, 32 for mesa.
-    pub fn to_account_of<const N: usize>(&self) -> Result<AccountOf<N>, AccountConfigError> {
-        let mut account = AccountOf::<N>::empty();
+    pub fn to_account_of<const N: usize>(
+        &self,
+        params: LedgerParams,
+    ) -> Result<AccountOf<N>, AccountConfigError> {
+        let mut account = AccountOf::<N>::empty_with_txn_version(params.txn_version);
 
         account.public_key = self.public_key()?;
         account.token_id = self.token_id()?;
@@ -236,7 +243,7 @@ impl Account {
         account.delegate = self.delegate()?;
         account.voting_for = self.voting_for()?;
         account.timing = self.timing()?;
-        account.permissions = self.permissions();
+        account.permissions = self.permissions(params.txn_version);
         account.zkapp = self.zkapp::<N>()?;
 
         Ok(account)

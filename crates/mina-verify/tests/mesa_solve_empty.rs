@@ -14,6 +14,8 @@ use mina_verify::mesa::{
 
 /// what the mesa-mut daemon computes for `[]`
 const ORACLE_EMPTY_LEDGER: &str = "jwkaDMeSMeL94hwJg6EYtSRD6gxB1BHpXnGKnZ1VW6jthKzgcef";
+/// what the *devnet* daemon computes for `[]` -- a second network to pin against
+const ORACLE_DEVNET_EMPTY: &str = "jxvN5DVDHPQow7qV8qMYu5JViwcLwYaM885xoov9DdSeC6oGMfc";
 
 fn empty_root(empty_leaf: Fp) -> String {
     let mut h = empty_leaf;
@@ -48,7 +50,7 @@ fn user_default_with(txn_version: u32) -> Permissions<AuthRequired> {
 
 /// the empty account's hash, for a given zkApp width and permissions txn_version
 fn empty_leaf<const N: usize>(txn_version: u32) -> Fp {
-    let mut account = AccountOf::<N>::empty();
+    let mut account = AccountOf::<N>::empty_with_txn_version(txn_version);
     account.permissions = user_default_with(txn_version);
     account.hash()
 }
@@ -60,7 +62,7 @@ fn solve_for_the_empty_account() {
 
     let mut hit = false;
 
-    for txn_version in 1..=4u32 {
+    for txn_version in 0..=8u32 {
         for (width, leaf) in [
             (8usize, empty_leaf::<8>(txn_version)),
             (32usize, empty_leaf::<32>(txn_version)),
@@ -68,7 +70,9 @@ fn solve_for_the_empty_account() {
             let root = empty_root(leaf);
             let marker = if root == ORACLE_EMPTY_LEDGER {
                 hit = true;
-                "  <<<<< MATCH"
+                "  <<<<< MESA-MUT"
+            } else if root == ORACLE_DEVNET_EMPTY {
+                "  <<<<< DEVNET"
             } else {
                 ""
             };
