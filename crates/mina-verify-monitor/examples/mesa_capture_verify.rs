@@ -1,10 +1,10 @@
 // Capture a live mesa-mut block off gossip (mesa types, no re-serialization) and
 // verify it with the mesa VK — definitive end-to-end test on the mesa kimchi stack.
 //   cargo run --example mesa_capture_verify -p mina-verify-monitor -- <mesa_vk.json>
-use std::ops::ControlFlow;
-use std::time::Duration;
 use mina_verify::{block_from_gossip_payload, Verifier};
 use mina_verify_capture::subscribe_blocks;
+use std::ops::ControlFlow;
+use std::time::Duration;
 
 const CHAIN_ID: &str = "8b8ccbf273ef48aa0193ed634e69540657f0fc4292c9919a54b76a21b104abb2";
 const PEERS: &[&str] = &[
@@ -34,22 +34,48 @@ async fn main() {
     let vk_path = std::env::args().nth(1).expect("usage: <mesa_vk.json>");
     let json = std::fs::read_to_string(&vk_path).expect("read vk");
     let verifier = Verifier::with_index_json(&json).expect("build verifier from mesa vk");
-    println!("subscribing to mesa-mut gossip ({} peers, up to 300s)...", PEERS.len());
+    println!(
+        "subscribing to mesa-mut gossip ({} peers, up to 300s)...",
+        PEERS.len()
+    );
     let mut done = false;
-    subscribe_blocks(CHAIN_ID, PEERS, Some(Duration::from_secs(300)),
+    subscribe_blocks(
+        CHAIN_ID,
+        PEERS,
+        Some(Duration::from_secs(300)),
         |payload| {
             let block = match block_from_gossip_payload(payload) {
                 Ok(b) => b,
-                Err(e) => { eprintln!("decode err: {e}"); return ControlFlow::Continue(()); }
+                Err(e) => {
+                    eprintln!("decode err: {e}");
+                    return ControlFlow::Continue(());
+                }
             };
-            let h = block.header.protocol_state.body.consensus_state.blockchain_length.as_u32();
-            let sh = block.header.try_hash().map(|x| x.to_string()).unwrap_or_else(|e| format!("{e:?}"));
+            let h = block
+                .header
+                .protocol_state
+                .body
+                .consensus_state
+                .blockchain_length
+                .as_u32();
+            let sh = block
+                .header
+                .try_hash()
+                .map(|x| x.to_string())
+                .unwrap_or_else(|e| format!("{e:?}"));
             let ok = verifier.verify_block(&block);
             println!("\nmesa-mut block height {h} computed_state_hash={sh} -> verify_block = {ok}");
             done = true;
             ControlFlow::Break(())
         },
-        |peers| { eprintln!("  connected peers: {peers}"); ControlFlow::Continue(()) },
-    ).await;
-    if !done { eprintln!("no block within deadline"); std::process::exit(1); }
+        |peers| {
+            eprintln!("  connected peers: {peers}");
+            ControlFlow::Continue(())
+        },
+    )
+    .await;
+    if !done {
+        eprintln!("no block within deadline");
+        std::process::exit(1);
+    }
 }

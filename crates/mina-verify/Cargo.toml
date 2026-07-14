@@ -12,6 +12,8 @@ mina-core = { workspace = true }
 mina-curves = { workspace = true }
 kimchi = { workspace = true }
 poly-commitment = { workspace = true }
+poseidon = { workspace = true }
+mina-signer = { workspace = true }
 binprot = { workspace = true }
 base64 = "0.22"
 once_cell = { workspace = true }
@@ -26,3 +28,9 @@ hex = "0.4"
 
 [dev-dependencies]
 mina-signer = { git = "https://github.com/o1-labs/proof-systems", rev = "ab84160fa2c22290a8506a7742ac1378879fc386" }
+# the mesa genesis-root oracle (tests/mesa_genesis_root.rs)
+mina-tree = { workspace = true }
+mina-curves = { workspace = true }
+mina-p2p-messages = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
