@@ -34,6 +34,34 @@ pub const MESA_ZKAPP_STATE_SIZE: usize = 32;
 /// V2's (devnet / mainnet-hardfork) zkApp application state width.
 pub const V2_ZKAPP_STATE_SIZE: usize = 8;
 
+/// mesa-mut's transaction version.
+///
+/// This matters far more than it looks. `Account::empty()` takes its permissions from
+/// `Permissions::user_default()`, whose `set_verification_key` carries
+/// `Txn_version.current` -- so the transaction version is hashed into the **empty
+/// account**, and therefore into every empty subtree, and therefore into every ledger
+/// root. mina-tree compiles in `TXN_VERSION_CURRENT = 3` (Berkeley). mesa-mut is **4**, so
+/// borrowing mina-tree's `user_default()` silently corrupts every mesa root.
+///
+/// Recovered from the protocol itself: the mesa-mut daemon hashes the empty ledger to
+/// `jwkaDMeS...`, and only (width 32, txn_version 4) reproduces it. See
+/// `tests/mesa_solve_empty.rs`.
+pub const MESA_TXN_VERSION: u32 = 4;
+
+/// Berkeley / V2's transaction version -- what mina-tree compiles in.
+pub const V2_TXN_VERSION: u32 = 3;
+
+/// `Permissions::user_default()` for a given transaction version. mina-tree's hardcodes
+/// its own compiled-in version, which is not mesa's.
+pub fn user_default_permissions(txn_version: u32) -> Permissions<mina_tree::AuthRequired> {
+    let mut permissions = Permissions::user_default();
+
+    permissions.set_verification_key.txn_version =
+        mina_tree::scan_state::currency::TxnVersion::from_u32(txn_version);
+
+    permissions
+}
+
 /// A zkApp account with an `N`-wide application state. `N = 8` is V2; `N = 32` is mesa.
 ///
 /// The width is a parameter rather than a constant so the *same* code can be run against a
@@ -223,7 +251,22 @@ impl<const N: usize> AccountOf<N> {
     }
 
     /// The empty account -- the leaf of every unoccupied slot in the ledger.
+    ///
+    /// The transaction version is picked from the state width, because the two travel
+    /// together: width 8 is Berkeley (txn version 3), width 32 is mesa (txn version 4).
+    /// It is hashed in via the default permissions, so getting it wrong corrupts every
+    /// ledger root -- see [`MESA_TXN_VERSION`].
     pub fn empty() -> Self {
+        let txn_version = match N {
+            MESA_ZKAPP_STATE_SIZE => MESA_TXN_VERSION,
+            _ => V2_TXN_VERSION,
+        };
+
+        Self::empty_with_txn_version(txn_version)
+    }
+
+    /// The empty account for an explicit transaction version.
+    pub fn empty_with_txn_version(txn_version: u32) -> Self {
         Self {
             public_key: CompressedPubKey::empty(),
             token_id: TokenId::default(),
@@ -234,7 +277,7 @@ impl<const N: usize> AccountOf<N> {
             delegate: None,
             voting_for: VotingFor::dummy(),
             timing: Timing::Untimed,
-            permissions: Permissions::user_default(),
+            permissions: user_default_permissions(txn_version),
             zkapp: None,
         }
     }
