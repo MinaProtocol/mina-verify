@@ -23,8 +23,14 @@ fn sweep_devnet_params() {
 
     for txn_version in 0..=8u32 {
         for (w, leaf) in [
-            (8usize, AccountOf::<8>::empty_with_txn_version(txn_version).hash()),
-            (32usize, AccountOf::<32>::empty_with_txn_version(txn_version).hash()),
+            (
+                8usize,
+                AccountOf::<8>::empty_with_txn_version(txn_version).hash(),
+            ),
+            (
+                32usize,
+                AccountOf::<32>::empty_with_txn_version(txn_version).hash(),
+            ),
         ] {
             for depth in 10..=35usize {
                 if empty_root_at(leaf, depth) == ORACLE_DEVNET_EMPTY {

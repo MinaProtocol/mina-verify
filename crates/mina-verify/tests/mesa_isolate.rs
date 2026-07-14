@@ -9,9 +9,7 @@
 
 use mina_curves::pasta::Fp;
 use mina_signer::CompressedPubKey;
-use mina_tree::{
-    Account as TreeAccount, BaseLedger, Database, Mask, ToInputs as _,
-};
+use mina_tree::{Account as TreeAccount, BaseLedger, Database, Mask, ToInputs as _};
 use mina_verify::mesa::{account::MesaAccount, ledger::MesaLedger};
 
 /// Our tree, driven by mina-tree's V2 leaves, must reproduce mina-tree's V2 root.

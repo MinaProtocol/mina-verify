@@ -43,8 +43,16 @@ fn mesa_verification_keys_round_trip() {
         if b64_again != vk_b64 {
             if broken < 3 {
                 println!("ROUND-TRIP MISMATCH");
-                println!("  in  (len {}): {}", vk_b64.len(), &vk_b64[..80.min(vk_b64.len())]);
-                println!("  out (len {}): {}", b64_again.len(), &b64_again[..80.min(b64_again.len())]);
+                println!(
+                    "  in  (len {}): {}",
+                    vk_b64.len(),
+                    &vk_b64[..80.min(vk_b64.len())]
+                );
+                println!(
+                    "  out (len {}): {}",
+                    b64_again.len(),
+                    &b64_again[..80.min(b64_again.len())]
+                );
             }
             broken += 1;
         }

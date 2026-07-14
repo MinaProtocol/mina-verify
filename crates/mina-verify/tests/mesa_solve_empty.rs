@@ -85,5 +85,8 @@ fn solve_for_the_empty_account() {
     println!("  width  8: {}", ZkAppAccountOf::<8>::default().hash());
     println!("  width 32: {}", ZkAppAccountOf::<32>::default().hash());
 
-    assert!(hit, "none of the enumerated empty accounts reproduces the daemon's empty ledger");
+    assert!(
+        hit,
+        "none of the enumerated empty accounts reproduces the daemon's empty ledger"
+    );
 }

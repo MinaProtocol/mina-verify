@@ -174,8 +174,8 @@ impl Verifier {
     /// embedded one (mainnet). No global network config is required.
     pub fn with_index_json(json: &str) -> Result<Self, VerifierError> {
         WORKDIR.call_once(|| mina_core::set_work_dir(std::env::temp_dir()));
-        let index = verifier_index::verifier_index_auto(json)
-            .map_err(VerifierError::InvalidIndexJson)?;
+        let index =
+            verifier_index::verifier_index_auto(json).map_err(VerifierError::InvalidIndexJson)?;
         Ok(Self {
             network: "custom".to_string(),
             index: Arc::new(index),

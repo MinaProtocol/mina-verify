@@ -40,7 +40,10 @@ fn probe_ledger_depth() {
 
     let accounts: Vec<MesaAccount> = json
         .iter()
-        .map(|a| a.to_account_of::<32>(mina_verify::mesa::MESA).expect("convert"))
+        .map(|a| {
+            a.to_account_of::<32>(mina_verify::mesa::MESA)
+                .expect("convert")
+        })
         .collect();
     println!("accounts: {}", accounts.len());
 
@@ -52,7 +55,11 @@ fn probe_ledger_depth() {
     for height in 0..45usize {
         let mut next = Vec::with_capacity(current.len().div_ceil(2));
         for pair in current.chunks(2) {
-            next.push(hash_node(height, pair[0], pair.get(1).copied().unwrap_or(empty)));
+            next.push(hash_node(
+                height,
+                pair[0],
+                pair.get(1).copied().unwrap_or(empty),
+            ));
         }
 
         current = next;

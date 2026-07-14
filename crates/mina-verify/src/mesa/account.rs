@@ -15,13 +15,13 @@
 //! zkApp into a single field via `zkapp.hash()`, so the wider state is confined to
 //! [`MesaZkAppAccount::to_inputs`]. That is the entire protocol delta.
 
+use mina_curves::pasta::Fp;
+use mina_signer::CompressedPubKey;
 use mina_tree::{
     scan_state::currency::{Balance, Magnitude, Nonce, Slot},
     AppendToInputs, MyCow, Permissions, ReceiptChainHash, Timing, TimingAsRecord, ToInputs,
     TokenId, TokenSymbol, VerificationKeyWire, VotingFor, ZkAppUri,
 };
-use mina_curves::pasta::Fp;
-use mina_signer::CompressedPubKey;
 use once_cell::sync::Lazy;
 use poseidon::hash::{
     params::{MINA_ACCOUNT, MINA_ZKAPP_ACCOUNT},

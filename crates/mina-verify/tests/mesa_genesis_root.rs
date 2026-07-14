@@ -64,11 +64,18 @@ fn mesa_genesis_ledger_hashes_to_the_protocol_root() {
                 .unwrap_or_else(|e| panic!("account #{i}: {e}"))
         })
         .collect();
-    println!("converted   : {} accounts in {:.2?}", accounts.len(), t.elapsed());
+    println!(
+        "converted   : {} accounts in {:.2?}",
+        accounts.len(),
+        t.elapsed()
+    );
 
     let zkapps = accounts.iter().filter(|a| a.zkapp.is_some()).count();
     println!("zkapps      : {zkapps} (32-wide app_state)");
-    assert!(zkapps > 0, "no zkApp accounts -- the mesa delta is untested");
+    assert!(
+        zkapps > 0,
+        "no zkApp accounts -- the mesa delta is untested"
+    );
 
     let t = Instant::now();
     let ledger = MesaLedger::new(&accounts, mina_verify::mesa::MESA);

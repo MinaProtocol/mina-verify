@@ -4,13 +4,13 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::fmt::{self, Display, Formatter};
 
+use mina_p2p_messages::v2::MinaBaseVerificationKeyWireStableV1;
+use mina_signer::CompressedPubKey;
 use mina_tree::{
     scan_state::currency::{Amount, Balance, Magnitude, Nonce, Slot, SlotSpan, TxnVersion},
     AuthRequired, Permissions, ReceiptChainHash, SetVerificationKey, Timing, TokenId, TokenSymbol,
     VerificationKey, VerificationKeyWire, VotingFor, ZkAppUri,
 };
-use mina_p2p_messages::v2::MinaBaseVerificationKeyWireStableV1;
-use mina_signer::CompressedPubKey;
 
 use super::account::{user_default_permissions, AccountOf, LedgerParams, ZkAppAccountOf};
 
@@ -43,7 +43,6 @@ pub struct Ledger {
 }
 
 impl Ledger {
-
     // Add the genesis winner account if the config says it should be added and also
     // if its not already present at the head of the accounts list.
     pub fn accounts_with_genesis_winner(&self) -> Vec<Account> {
@@ -69,9 +68,7 @@ impl Ledger {
             }
         }
     }
-
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
@@ -143,7 +140,6 @@ impl Account {
             }
         }
     }
-
 
     pub fn token_id(&self) -> Result<TokenId, AccountConfigError> {
         // `token` appears in two encodings depending on the era of the dump:

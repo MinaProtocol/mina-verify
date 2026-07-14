@@ -9,8 +9,8 @@
 //! `V2::hash_node` -- see [`implied_root`].
 
 use super::account::{AccountOf, LedgerParams, MESA};
-use mina_tree::MerklePath;
 use mina_curves::pasta::Fp;
+use mina_tree::MerklePath;
 use poseidon::hash::{hash_with_kimchi, params::get_merkle_param_for_height};
 
 /// Mina's account-ledger depth on both networks we have pinned. Not assumed anywhere --
