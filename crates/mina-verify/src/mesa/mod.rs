@@ -21,7 +21,8 @@ pub mod ledger;
 pub use account::{
     default_mesa_zkapp_hash, default_zkapp_hash_of, user_default_permissions, AccountOf,
     LedgerParams, MesaAccount, MesaZkAppAccount, V2Account, V2ZkAppAccount, ZkAppAccountOf,
-    BERKELEY, MESA, MESA_TXN_VERSION, MESA_ZKAPP_STATE_SIZE, V2_TXN_VERSION, V2_ZKAPP_STATE_SIZE,
+    BERKELEY, DEVNET, MESA, MESA_TXN_VERSION, MESA_ZKAPP_STATE_SIZE, V2_TXN_VERSION,
+    V2_ZKAPP_STATE_SIZE,
 };
 pub use block::{accounts_accessed, config_account_from_block, staged_ledger_hash};
 pub use ledger::{
