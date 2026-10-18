@@ -78,9 +78,18 @@ pub const BERKELEY: LedgerParams = LedgerParams {
     depth: 35,
 };
 
-// NOTE: devnet is deliberately absent. The only devnet image to hand is a *generic* build
-// (ledger depth 10), which is not devnet's protocol -- so its constants are unpinned.
-// Add them once a real devnet daemon has been asked for its empty-ledger hash.
+/// devnet. Verified: the genesis state dump -- all 91,688 accounts, including its 28,529
+/// zkApps -- hashes to `jwX3YJhLR5F3eByADvfurX5u7DT7Utiv54uixYts6HLrR6CETug`, the root
+/// every devnet block carries in `blockchain_state.genesis_ledger_hash`.
+///
+/// These turn out to be Berkeley's parameters, but they are named separately because that
+/// was an open question rather than an assumption: devnet's `txn_version` was recovered by
+/// sweeping it against the published root (`tests/devnet_genesis_root.rs`), not borrowed.
+pub const DEVNET: LedgerParams = LedgerParams {
+    zkapp_state_size: V2_ZKAPP_STATE_SIZE,
+    txn_version: V2_TXN_VERSION,
+    depth: 35,
+};
 
 /// mesa-mut's transaction version.
 ///
